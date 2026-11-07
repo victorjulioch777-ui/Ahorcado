@@ -12,6 +12,7 @@ mensajeError DB 0Dh, 0Ah, "Letra incorrecta!$"
 mensajeIngresar DB 0Dh, 0Ah, "Ingrese una letra: $"
 mensajeDerrota DB 0Dh, 0Ah, "Has perdido!$"
 mensajeVictoria DB 0Dh, 0Ah, "Has ganado!$"
+mensajeRepetida DB 0Dh, 0Ah, "Ya ingresaste esa letra!$"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -33,6 +34,8 @@ palabraVisible db "____$"  ;Letras descubiertas y fin de cadena
 
 encontro db 0       ;0 = no encontrado y 1 = encontrado
 errores db 0 ;Cantidad de errores del jugador
+letrasUsadas db 26 dup(0)
+cantidadUsadas db 0 
 
 ;----------------------------
 ;5. Puntuacion y estadisticas
@@ -58,8 +61,42 @@ main proc
         ;Leer la letra del jugador
         mov ah, 01h
         int 21h
-        mov letraJugador, AL 
-              
+        mov letraJugador, AL
+        
+        mov bx, 0 
+        
+    verificarRepetida:
+        mov al, cantidadUsadas
+        mov ah, 0
+        cmp bx, ax
+        jae guardarLetraNueva
+        
+        mov al, letrasUsadas[bx]
+        cmp al, letraJugador
+        je letraRepetida
+        
+        inc bx
+        jmp verificarRepetida
+        
+    guardarLetraNueva:
+        mov bx, 0
+        mov bl, cantidadUsadas
+        
+        mov al, letraJugador
+        
+        mov letrasUsadas[bx], al
+        
+        inc cantidadUsadas
+        
+        jmp recorrer
+        
+    letraRepetida:
+        lea dx, mensajeRepetida
+        mov ah, 09h
+        int 21h
+        
+        jmp nuevoIntento
+        
     recorrer:
         ;Leer una letra de la palabra secreta
         mov al, palabra[si]
@@ -69,7 +106,7 @@ main proc
         je encontrada
         
         ;Si no coincide, avanzar a la siguiente
-        jmp siguiente
+        jmp siguiente 
         
     encontrada:
         ;Registrar el acierto y revelar la letra
