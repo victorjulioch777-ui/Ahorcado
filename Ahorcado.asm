@@ -13,6 +13,7 @@ mensajeIngresar DB 0Dh, 0Ah, "Ingrese una letra: $"
 mensajeDerrota DB 0Dh, 0Ah, "Has perdido!$"
 mensajeVictoria DB 0Dh, 0Ah, "Has ganado!$"
 mensajeRepetida DB 0Dh, 0Ah, "Ya ingresaste esa letra!$"
+mensajeInvalido DB 0Dh, 0Ah, "Ingrese solo letras de A a Z!$"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -63,6 +64,23 @@ main proc
         int 21h
         mov letraJugador, AL
         
+        cmp al, 'a'
+        jb guardarCaracter
+        
+        cmp al, 'z'
+        ja guardarCaracter
+        
+        sub al, 20h
+        
+    guardarCaracter:
+        cmp al, 'A'
+        jb caracterInvalido
+        
+        cmp al, 'Z'
+        ja caracterInvalido
+        
+        mov letraJugador, al
+        
         mov bx, 0 
         
     verificarRepetida:
@@ -92,6 +110,13 @@ main proc
         
     letraRepetida:
         lea dx, mensajeRepetida
+        mov ah, 09h
+        int 21h
+        
+        jmp nuevoIntento
+        
+    caracterInvalido:
+        lea dx, mensajeInvalido
         mov ah, 09h
         int 21h
         
