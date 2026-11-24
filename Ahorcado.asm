@@ -87,6 +87,19 @@ dibujo6 DB 0Dh, 0Ah
         DB "   / \      |", 0Dh, 0Ah
         DB "            |", 0Dh, 0Ah
         DB "=============", 0Dh, 0Ah, "$"
+        
+mensajeVictoriaFinal DB 0Dh, 0Ah
+                     DB "================================", 0Dh, 0Ah
+                     DB "          HAS GANADO!           ", 0Dh, 0Ah
+                     DB "================================", 0Dh, 0Ah, "$"
+
+mensajeDerrotaFinal DB 0Dh, 0Ah
+                    DB "================================", 0Dh, 0Ah
+                    DB "          HAS PERDIDO!          ", 0Dh, 0Ah
+                    DB "================================", 0Dh, 0Ah, "$"
+
+mensajeLeyenda DB 0Dh, 0Ah
+               DB "Verde: Correcta | Rojo: Incorrecta", "$"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -193,110 +206,22 @@ main proc
         mov palabraVisible[bx], '$'                
          
     nuevoIntento:
-         mov ah, 00h
-         mov al, 03h
-         int 10h
-         
-         lea dx, mensajeTitulo
-         mov ah, 09h
-         int 21h
-         
-         cmp errores, 0
-         je seleccionarDibujo0
-         
-         cmp errores, 1
-         je seleccionarDibujo1
-         
-         cmp errores, 2
-         je seleccionarDibujo2
-         
-         cmp errores, 3
-         je seleccionarDibujo3
-         
-         cmp errores, 4
-         je seleccionarDibujo4
-         
-         jmp seleccionarDibujo5
-         
-         seleccionarDibujo0:
-            lea dx, dibujo0
-            jmp imprimirDibujo
-               
-         seleccionarDibujo1:
-            lea dx, dibujo1
-            jmp imprimirDibujo
-            
-         seleccionarDibujo2:
-            lea dx, dibujo2
-            jmp imprimirDibujo
-            
-         seleccionarDibujo3:
-            lea dx, dibujo3
-            jmp imprimirDibujo
-            
-         seleccionarDibujo4:
-            lea dx, dibujo4
-            jmp imprimirDibujo
-            
-         seleccionarDibujo5:
-            lea dx, dibujo5
-            jmp imprimirDibujo
-            
-         imprimirDibujo:
-            mov ah, 09h
-            int 21h
-         
-            lea dx, mensajePalabra
-            mov ah, 09h
-            int 21h
-            
-            mov si, 0
-         
-         mostrarPalabraSeparada:
-            mov dl, palabraVisible[si]
-            
-            cmp dl, '$'
-            je finMostrarPalabra
-            
-            mov ah, 02h
-            int 21h
-            
-            mov dl, 20h
-            mov ah, 02h
-            int 21h
-            
-            inc si
-            jmp mostrarPalabraSeparada
-            
-         finMostrarPalabra:
-            mov si, 0
-            mov encontro, 0   
-         
-         mov si, 0
-         mov encontro, 0
-         
-         lea dx, mensajeIntentos
-         mov ah, 09h
-         int 21h
-         mov al, 6
-         sub al, errores
-         
-         add al, 30h
-         
-         mov dl, al
-         mov ah, 02h
-         int 21h
-         
-         lea dx, mensajeLetrasUsadas
-         mov ah, 09h
-         int 21h
-         
-         cmp cantidadUsadas, 0
-         jne iniciarRecorridoLetras
-         
-         lea dx, mensajeNinguna
-         mov ah, 09h
-         int 21h
+        call limpiarPantalla
+    
+        call mostrarTitulo
+    
+        call mostrarDibujo
+    
+        call mostrarPalabra
+    
+        call mostrarIntentos
+    
+        call mostrarHistorial
+    
+        mov si, 0
+        mov encontro, 0
+
+        jmp mostrarEstadoTurno
          
          jmp mostrarEstadoTurno
     
@@ -537,12 +462,22 @@ main proc
         jmp finalizar
         
     mostrarVictoria:
-        ;Informar que descubrio toda la palabra
-        lea dx, mensajeVictoria
+        call limpiarPantalla
+    
+        call mostrarTitulo
+    
+        call mostrarDibujo
+    
+        call mostrarPalabra
+    
+        call mostrarIntentos
+    
+        call mostrarHistorial
+    
+        lea dx, mensajeVictoriaFinal
         mov ah, 09h
         int 21h
-             
-        ; Se encarga de salir sin solicitar otra letra
+    
         jmp salirJuego
         
     finalizar:
@@ -554,46 +489,328 @@ main proc
         jmp nuevoIntento
          
     finPartida:
-        mov ah, 00h
-        mov al, 03h
-        int 10h
-        
-        lea dx, mensajeTitulo
+        call limpiarPantalla
+    
+        call mostrarTitulo
+    
+        call mostrarDibujo
+    
+        call mostrarPalabra
+    
+        call mostrarIntentos
+    
+        call mostrarHistorial
+    
+        lea dx, mensajeDerrotaFinal
         mov ah, 09h
         int 21h
-        
-        lea dx, dibujo6
-        mov ah, 09h
-        int 21h
-        
-        lea dx, mensajeDerrota
-        mov ah, 09h
-        int 21h
-        
+    
         lea dx, mensajeRevelar
         mov ah, 09h
         int 21h
-        
+    
         mov bx, palabraActual
         mov si, 0
-        
-        revelarPalabra:
-            mov dl, [bx+si]
-            
-            cmp dl, 0
-            je salirJuego
-            
-            mov ah, 02h
-            int 21h
-            
-            inc si
-            jmp revelarPalabra
+    
+    revelarPalabra:
+    
+        mov dl, [bx+si]
+    
+        cmp dl, 0
+        je salirJuego
+    
+        mov ah, 02h
+        int 21h
+    
+        inc si
+        jmp revelarPalabra
             
     salirJuego:
         ;Se encarga de terminar la ejecucion del juego
         .exit
     
 main endp
+
+limpiarPantalla PROC
+
+    push ax
+
+    mov ah, 00h
+    mov al, 03h
+    int 10h
+
+    pop ax
+
+    ret
+
+limpiarPantalla ENDP
+
+mostrarTitulo PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeTitulo
+    mov ah, 09h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarTitulo ENDP
+
+mostrarDibujo PROC
+
+    push ax
+    push dx
+
+    cmp errores, 0
+    je grafico0
+
+    cmp errores, 1
+    je grafico1
+
+    cmp errores, 2
+    je grafico2
+
+    cmp errores, 3
+    je grafico3
+
+    cmp errores, 4
+    je grafico4
+
+    cmp errores, 5
+    je grafico5
+
+    jmp grafico6
+
+grafico0:
+    lea dx, dibujo0
+    jmp imprimirGrafico
+
+grafico1:
+    lea dx, dibujo1
+    jmp imprimirGrafico
+
+grafico2:
+    lea dx, dibujo2
+    jmp imprimirGrafico
+
+grafico3:
+    lea dx, dibujo3
+    jmp imprimirGrafico
+
+grafico4:
+    lea dx, dibujo4
+    jmp imprimirGrafico
+
+grafico5:
+    lea dx, dibujo5
+    jmp imprimirGrafico
+
+grafico6:
+    lea dx, dibujo6
+
+imprimirGrafico:
+
+    mov ah, 09h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarDibujo ENDP
+
+mostrarPalabra PROC
+
+    push ax
+    push dx
+    push si
+
+    lea dx, mensajePalabra
+    mov ah, 09h
+    int 21h
+
+    mov si, 0
+
+cicloMostrarPalabra:
+
+    mov dl, palabraVisible[si]
+
+    cmp dl, '$'
+    je terminarMostrarPalabra
+
+    mov ah, 02h
+    int 21h
+
+    mov dl, ' '
+    mov ah, 02h
+    int 21h
+
+    inc si
+    jmp cicloMostrarPalabra
+
+terminarMostrarPalabra:
+
+    pop si
+    pop dx
+    pop ax
+
+    ret
+
+mostrarPalabra ENDP
+
+mostrarIntentos PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeIntentos
+    mov ah, 09h
+    int 21h
+
+    mov al, 6
+    sub al, errores
+    add al, 30h
+
+    mov dl, al
+    mov ah, 02h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarIntentos ENDP
+
+imprimirColor PROC
+
+    push ax
+    push bx
+    push cx
+    push dx
+
+    mov ah, 09h
+    mov bh, 0
+    mov cx, 1
+    int 10h
+
+    ; Obtener posicion del cursor
+    mov ah, 03h
+    mov bh, 0
+    int 10h
+
+    ; Avanzar el cursor
+    inc dl
+
+    mov ah, 02h
+    mov bh, 0
+    int 10h
+
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+imprimirColor ENDP
+
+mostrarHistorial PROC
+
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    lea dx, mensajeLetrasUsadas
+    mov ah, 09h
+    int 21h
+
+    cmp cantidadUsadas, 0
+    jne iniciarHistorial
+
+    lea dx, mensajeNinguna
+    mov ah, 09h
+    int 21h
+
+    jmp terminarHistorial
+
+iniciarHistorial:
+
+    mov di, 0
+
+cicloHistorial:
+
+    mov al, cantidadUsadas
+    mov ah, 0
+
+    cmp di, ax
+    jae mostrarLeyenda
+
+    mov al, letrasUsadas[di]
+
+    mov bx, palabraActual
+    mov si, 0
+
+buscarColor:
+
+    mov dl, [bx+si]
+
+    cmp dl, 0
+    je colorIncorrecto
+
+    cmp dl, al
+    je colorCorrecto
+
+    inc si
+    jmp buscarColor
+
+colorCorrecto:
+
+    mov bl, 0Ah
+    jmp imprimirLetraColor
+
+colorIncorrecto:
+
+    mov bl, 0Ch
+
+imprimirLetraColor:
+
+    call imprimirColor
+
+    mov al, ' '
+    mov bl, 07h
+    call imprimirColor
+
+    inc di
+    jmp cicloHistorial
+
+mostrarLeyenda:
+
+    lea dx, mensajeLeyenda
+    mov ah, 09h
+    int 21h
+
+terminarHistorial:
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+mostrarHistorial ENDP
 
 ;--------------------------
 ;6. Procedimientos de menus
