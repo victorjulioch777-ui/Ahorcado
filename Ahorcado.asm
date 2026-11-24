@@ -100,6 +100,51 @@ mensajeDerrotaFinal DB 0Dh, 0Ah
 
 mensajeLeyenda DB 0Dh, 0Ah
                DB "Verde: Correcta | Rojo: Incorrecta", "$"
+               
+mensajeMenu DB 0Dh, 0Ah
+            DB "Seleccione la modalidad:", 0Dh, 0Ah
+            DB "1. Maquina vs Jugador", 0Dh, 0Ah
+            DB "2. Jugador vs Jugador", 0Dh, 0Ah
+            DB "3. Salir", 0Dh, 0Ah
+            DB "Opcion: $"
+
+mensajeNickname1 DB 0Dh, 0Ah
+                 DB "Nickname del jugador 1: $"
+
+mensajeNickname2 DB 0Dh, 0Ah
+                 DB "Nickname del jugador 2: $"
+
+mensajeErrorNickname DB 0Dh, 0Ah
+                     DB "Debe ingresar entre 3 y 10 caracteres.$"
+
+mensajeOpcionInvalida DB 0Dh, 0Ah
+                      DB "Opcion invalida.$"
+
+mensajeDificultad DB 0Dh, 0Ah
+                  DB "Seleccione la dificultad:", 0Dh, 0Ah
+                  DB "1. Facil", 0Dh, 0Ah
+                  DB "2. Intermedio", 0Dh, 0Ah
+                  DB "3. Dificil", 0Dh, 0Ah
+                  DB "Opcion: $"
+
+mensajeRondas DB 0Dh, 0Ah
+              DB "Cantidad de rondas (2 o 4): $"
+
+mensajeJugadorActual DB 0Dh, 0Ah
+                     DB "Jugador: $"
+
+mensajeNivelActual DB 0Dh, 0Ah
+                   DB "Dificultad: $"
+
+textoFacil DB "Facil$"
+textoIntermedio DB "Intermedio$"
+textoDificil DB "Dificil$"
+
+mensajeConfirmacion DB 0Dh, 0Ah
+                    DB "Configuracion guardada.$"
+
+mensajeContinuar DB 0Dh, 0Ah
+                 DB "Presione una tecla para continuar...$"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -107,6 +152,17 @@ mensajeLeyenda DB 0Dh, 0Ah
 
 ;Almacena el caracter ingresado por el teclado
 letraJugador db 0
+
+nickname1 DB 12, 0, 12 DUP(0)
+nickname2 DB 12, 0, 12 DUP(0)
+
+modalidad DB 0
+dificultad DB 0
+
+jugadorActual DB 1
+
+cantidadRondas DB 1
+rondaActual DB 1
 
 ;------------------------
 ;3. Palabras y categorias
@@ -140,6 +196,8 @@ main proc
     ;Inicializar el segmento de datos                                                                                                                                              
     mov ax, @data
     mov ds, ax
+    
+    call configurarJuego
     
     ; Se encarga de obtener la hora del sistema
     mov ah, 2Ch
@@ -206,65 +264,37 @@ main proc
         mov palabraVisible[bx], '$'                
          
     nuevoIntento:
+
         call limpiarPantalla
-    
         call mostrarTitulo
     
+        call mostrarJugador
+        call mostrarNivel
+    
         call mostrarDibujo
-    
         call mostrarPalabra
-    
         call mostrarIntentos
-    
         call mostrarHistorial
     
         mov si, 0
         mov encontro, 0
-
+    
         jmp mostrarEstadoTurno
-         
-         jmp mostrarEstadoTurno
-    
-    iniciarRecorridoLetras:
-         mov bx, 0
-    
-    mostrarLetrasUsadas:
-    
-        ; Obtener la cantidad de letras utilizadas
-        mov al, cantidadUsadas
-        mov ah, 0
-    
-        ; Comprobar si termino el recorrido
-        cmp bx, ax
-        jae mostrarEstadoTurno
-    
-        ; Mostrar la letra almacenada
-        mov dl, letrasUsadas[bx]
-        mov ah, 02h
-        int 21h
-    
-        ; Mostrar un espacio
-        mov dl, ' '
-        mov ah, 02h
-        int 21h
-    
-        ; Avanzar a la siguiente posicion
-        inc bx
-        jmp mostrarLetrasUsadas
     
     mostrarEstadoTurno:
+    
         cmp estadoTurno, 1
         je estadoAcierto
-        
+    
         cmp estadoTurno, 2
         je estadoError
-        
+    
         cmp estadoTurno, 3
         je estadoRepetida
-        
+    
         cmp estadoTurno, 4
         je estadoInvalido
-        
+    
         jmp solicitarLetra
         
     estadoAcierto:
@@ -276,7 +306,7 @@ main proc
         jmp imprimirEstado
         
     estadoRepetida:
-        lea dx, mensajeInvalido
+        lea dx, mensajeRepetida
         jmp imprimirEstado
         
     estadoInvalido:
@@ -465,6 +495,9 @@ main proc
         call limpiarPantalla
     
         call mostrarTitulo
+        
+        call mostrarJugador
+        call mostrarNivel
     
         call mostrarDibujo
     
@@ -492,7 +525,10 @@ main proc
         call limpiarPantalla
     
         call mostrarTitulo
-    
+        
+        call mostrarJugador
+        call mostrarNivel
+        
         call mostrarDibujo
     
         call mostrarPalabra
@@ -530,6 +566,259 @@ main proc
         .exit
     
 main endp
+;--------------------------
+;6. Procedimientos de menus
+;--------------------------
+
+seleccionarModalidad PROC
+
+repetirModalidad:
+
+    call limpiarPantalla
+    call mostrarTitulo
+
+    lea dx, mensajeMenu
+    mov ah, 09h
+    int 21h
+
+    mov ah, 01h
+    int 21h
+
+    cmp al, '1'
+    je guardarModalidad
+
+    cmp al, '2'
+    je guardarModalidad
+
+    cmp al, '3'
+    je cerrarProgramaMenu
+
+    call mostrarErrorOpcion
+    jmp repetirModalidad
+
+guardarModalidad:
+
+    sub al, 30h
+    mov modalidad, al
+
+    ret
+
+cerrarProgramaMenu:
+
+    mov ax, 4C00h
+    int 21h
+
+seleccionarModalidad ENDP
+
+mostrarErrorOpcion PROC
+
+    lea dx, mensajeOpcionInvalida
+    mov ah, 09h
+    int 21h
+
+    call esperarTecla
+
+    ret
+
+mostrarErrorOpcion ENDP
+
+esperarTecla PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeContinuar
+    mov ah, 09h
+    int 21h
+
+    mov ah, 08h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+esperarTecla ENDP
+
+leerNickname PROC
+
+    push ax
+    push bx
+    push dx
+    push si
+
+    mov bx, dx
+
+repetirNickname:
+
+    mov byte ptr [bx+1], 0
+
+    mov dx, bx
+    mov ah, 0Ah
+    int 21h
+
+    mov al, [bx+1]
+
+    cmp al, 3
+    jb nicknameInvalido
+
+    cmp al, 10
+    ja nicknameInvalido
+
+    jmp nicknameValido
+
+nicknameInvalido:
+
+    lea dx, mensajeErrorNickname
+    mov ah, 09h
+    int 21h
+
+    mov ah, 02h
+    mov dl, 0Dh
+    int 21h
+
+    mov dl, 0Ah
+    int 21h
+
+    jmp repetirNickname
+
+nicknameValido:
+
+    pop si
+    pop dx
+    pop bx
+    pop ax
+
+    ret
+
+leerNickname ENDP
+
+registrarJugadores PROC
+
+    call limpiarPantalla
+    call mostrarTitulo
+
+    lea dx, mensajeNickname1
+    mov ah, 09h
+    int 21h
+
+    lea dx, nickname1
+    call leerNickname
+
+    cmp modalidad, 2
+    jne finRegistroJugadores
+
+    lea dx, mensajeNickname2
+    mov ah, 09h
+    int 21h
+
+    lea dx, nickname2
+    call leerNickname
+
+finRegistroJugadores:
+
+    mov jugadorActual, 1
+
+    ret
+
+registrarJugadores ENDP
+
+seleccionarDificultad PROC
+
+repetirDificultad:
+
+    call limpiarPantalla
+    call mostrarTitulo
+
+    lea dx, mensajeDificultad
+    mov ah, 09h
+    int 21h
+
+    mov ah, 01h
+    int 21h
+
+    cmp al, '1'
+    jb dificultadInvalida
+
+    cmp al, '3'
+    ja dificultadInvalida
+
+    sub al, 30h
+    mov dificultad, al
+
+    ret
+
+dificultadInvalida:
+
+    call mostrarErrorOpcion
+    jmp repetirDificultad
+
+seleccionarDificultad ENDP
+
+seleccionarRondas PROC
+
+    mov cantidadRondas, 1
+    mov rondaActual, 1
+
+    cmp modalidad, 2
+    jne finSeleccionRondas
+
+repetirRondas:
+
+    call limpiarPantalla
+    call mostrarTitulo
+
+    lea dx, mensajeRondas
+    mov ah, 09h
+    int 21h
+
+    mov ah, 01h
+    int 21h
+
+    cmp al, '2'
+    je guardarRondas
+
+    cmp al, '4'
+    je guardarRondas
+
+    call mostrarErrorOpcion
+    jmp repetirRondas
+
+guardarRondas:
+
+    sub al, 30h
+    mov cantidadRondas, al
+
+finSeleccionRondas:
+
+    ret
+
+seleccionarRondas ENDP
+
+configurarJuego PROC
+
+    call seleccionarModalidad
+
+    call registrarJugadores
+
+    call seleccionarDificultad
+
+    call seleccionarRondas
+
+    lea dx, mensajeConfirmacion
+    mov ah, 09h
+    int 21h
+
+    call esperarTecla
+
+    ret
+
+configurarJuego ENDP
+
+;---------------------------
+;7. Procedimientos del juego 
+;---------------------------
 
 limpiarPantalla PROC
 
@@ -812,13 +1101,122 @@ terminarHistorial:
 
 mostrarHistorial ENDP
 
-;--------------------------
-;6. Procedimientos de menus
-;--------------------------
+imprimirNickname PROC
 
-;---------------------------
-;7. Procedimientos del juego 
-;---------------------------
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    mov bx, dx
+
+    mov cl, [bx+1]
+    mov ch, 0
+
+    mov si, 2
+
+cicloNickname:
+
+    cmp cx, 0
+    je finImprimirNickname
+
+    mov dl, [bx+si]
+
+    mov ah, 02h
+    int 21h
+
+    inc si
+    dec cx
+
+    jmp cicloNickname
+
+finImprimirNickname:
+
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+imprimirNickname ENDP
+
+mostrarJugador PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeJugadorActual
+    mov ah, 09h
+    int 21h
+
+    cmp jugadorActual, 1
+    je mostrarJugador1
+
+    lea dx, nickname2
+    jmp imprimirJugadorActual
+
+mostrarJugador1:
+
+    lea dx, nickname1
+
+imprimirJugadorActual:
+
+    call imprimirNickname
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarJugador ENDP
+
+mostrarNivel PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeNivelActual
+    mov ah, 09h
+    int 21h
+
+    cmp dificultad, 1
+    je nivelFacil
+
+    cmp dificultad, 2
+    je nivelIntermedio
+
+    jmp nivelDificil
+
+nivelFacil:
+
+    lea dx, textoFacil
+    jmp imprimirNivel
+
+nivelIntermedio:
+
+    lea dx, textoIntermedio
+    jmp imprimirNivel
+
+nivelDificil:
+
+    lea dx, textoDificil
+
+imprimirNivel:
+
+    mov ah, 09h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarNivel ENDP
+
+
 
 ;---------------------------
 ;8. Comodines y temporizador 
