@@ -160,6 +160,21 @@ textoAnimales DB "Animales$"
 textoPaises DB "Paises$"
 textoComputacion DB "Computacion$"
 
+mensajeOtraPartida DB 0Dh, 0Ah
+                   DB "Desea jugar otra partida?", 0Dh, 0Ah
+                   DB "1. Si", 0Dh, 0Ah
+                   DB "2. No", 0Dh, 0Ah
+                   DB "Opcion: $"
+
+mensajeSinPalabras DB 0Dh, 0Ah
+                   DB "No quedan palabras disponibles", 0Dh, 0Ah
+                   DB "en esta categoria y dificultad.", 0Dh, 0Ah
+                   DB "Seleccione otra combinacion.$"
+
+mensajeBancoAgotado DB 0Dh, 0Ah
+                    DB "Ha utilizado todas las palabras", 0Dh, 0Ah
+                    DB "del banco de palabras.$"
+
 ;-----------------------------                     
 ;2. Variables de los jugadores
 ;-----------------------------
@@ -281,7 +296,14 @@ cantidadUsadas db 0
 longitudPalabra db 0
 palabraActual dw 0
 numeroPalabra db 0
-estadoTurno db 0 
+estadoTurno db 0
+
+; Control de palabras utilizadas
+palabrasUtilizadas DB 27 DUP(0)
+totalPalabrasUsadas DB 0
+
+; Control de nuevas partidas
+continuarPartida DB 0 
 
 ;----------------------------
 ;5. Puntuacion y estadisticas
@@ -294,14 +316,39 @@ main proc
     mov ax, @data
     mov ds, ax
     
-    ; Configuracion inicial
     call configurarJuego
 
-    ; Seleccionar palabra del banco
-    call seleccionarPalabra
+    iniciarPartida:
 
-    ; Preparar palabra oculta
-    call prepararPalabra
+        cmp totalPalabrasUsadas, 27
+        jne buscarNuevaPalabra
+
+        jmp bancoAgotado
+
+    buscarNuevaPalabra:
+    
+        call seleccionarPalabra
+        jc grupoAgotado
+    
+        call reiniciarPartida
+    
+        jmp nuevoIntento
+    
+    grupoAgotado:
+    
+        call limpiarPantalla
+        call mostrarTitulo
+    
+        lea dx, mensajeSinPalabras
+        mov ah, 09h
+        int 21h
+    
+        call esperarTecla
+    
+        call seleccionarDificultad
+        call seleccionarCategoria
+    
+        jmp iniciarPartida
 
     nuevoIntento:
     
@@ -553,7 +600,7 @@ main proc
         mov ah, 09h
         int 21h
     
-        jmp salirJuego
+        jmp terminarPartida
         
     finalizar:
         ;Comprobar si acumulo 6 errores
@@ -596,13 +643,43 @@ main proc
         mov dl, [bx+si]
     
         cmp dl, 0
-        je salirJuego
+        je terminarPartida
     
         mov ah, 02h
         int 21h
     
         inc si
         jmp revelarPalabra
+        
+    terminarPartida:
+
+        ; El multijugador se implementara
+        ; en el siguiente modulo
+        cmp modalidad, 1
+        jne salirJuego
+    
+        ; Comprobar si quedan palabras
+        cmp totalPalabrasUsadas, 27
+        je bancoAgotado
+    
+        ; Preguntar si desea continuar
+        call preguntarOtraPartida
+    
+        cmp continuarPartida, 1
+        jne salirJuego
+    
+        ; Iniciar otra partida
+        jmp iniciarPartida
+    
+    bancoAgotado:
+    
+        lea dx, mensajeBancoAgotado
+        mov ah, 09h
+        int 21h
+    
+        call esperarTecla
+    
+        jmp salirJuego
             
     salirJuego:
         ;Se encarga de terminar la ejecucion del juego
@@ -892,6 +969,38 @@ configurarJuego PROC
     ret
 
 configurarJuego ENDP
+
+preguntarOtraPartida PROC
+
+repetirOtraPartida:
+
+    lea dx, mensajeOtraPartida
+    mov ah, 09h
+    int 21h
+
+    mov ah, 01h
+    int 21h
+
+    cmp al, '1'
+    je continuarJuego
+
+    cmp al, '2'
+    je terminarJuego
+
+    call mostrarErrorOpcion
+    jmp repetirOtraPartida
+
+continuarJuego:
+
+    mov continuarPartida, 1
+    ret
+
+terminarJuego:
+
+    mov continuarPartida, 0
+    ret
+
+preguntarOtraPartida ENDP
 
 ;---------------------------
 ;7. Procedimientos del juego 
@@ -1299,6 +1408,8 @@ seleccionarPalabra PROC
     push bx
     push cx
     push dx
+    push si
+    push di
 
     ; Calcular posicion inicial de la categoria
     mov al, categoria
@@ -1318,44 +1429,88 @@ seleccionarPalabra PROC
 
     add cx, ax
 
-    ; Obtener hora del sistema
-    push cx
+    ; Guardar indice inicial del grupo
+    mov si, cx
 
+    ; Obtener hora del sistema
     mov ah, 2Ch
     int 21h
 
     mov al, dl
     add al, dh
 
-    pop cx
-
-    ; Obtener numero aleatorio entre 0 y 2
+    ; Obtener residuo entre 0 y 2
     mov ah, 0
     mov bl, 3
     div bl
 
-    ; Obtener el residuo
     mov al, ah
     mov ah, 0
 
-    ; Calcular indice definitivo
-    add ax, cx
+    ; Guardar desplazamiento aleatorio
+    mov di, ax
 
-    mov numeroPalabra, al
+    ; Maximo de tres palabras por grupo
+    mov cx, 3
 
-    ; Cada direccion ocupa 2 bytes
-    mov bx, ax
-    shl bx, 1
+buscarPalabraDisponible:
 
-    ; Obtener direccion de la palabra
-    mov ax, tablaPalabras[bx]
-    mov palabraActual, ax
+    ; Calcular indice de la palabra
+    mov bx, si
+    add bx, di
 
+    ; Comprobar si ya fue utilizada
+    cmp palabrasUtilizadas[bx], 0
+    je palabraDisponible
+
+    ; Probar la siguiente posicion
+    inc di
+
+    cmp di, 3
+    jb continuarBusqueda
+
+    mov di, 0
+
+continuarBusqueda:
+
+    loop buscarPalabraDisponible
+
+    ; No quedan palabras en este grupo
+    pop di
+    pop si
     pop dx
     pop cx
     pop bx
     pop ax
 
+    stc
+    ret
+
+palabraDisponible:
+
+    ; Marcar palabra como utilizada
+    mov palabrasUtilizadas[bx], 1
+
+    inc totalPalabrasUsadas
+
+    ; Guardar indice seleccionado
+    mov ax, bx
+    mov numeroPalabra, al
+
+    ; Obtener direccion desde la tabla
+    shl bx, 1
+
+    mov ax, tablaPalabras[bx]
+    mov palabraActual, ax
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    clc
     ret
 
 seleccionarPalabra ENDP
@@ -1407,6 +1562,37 @@ guardarLongitud:
     ret
 
 prepararPalabra ENDP
+
+reiniciarPartida PROC
+
+    push si
+
+    ; Reiniciar variables de la partida
+    mov errores, 0
+    mov encontro, 0
+    mov cantidadUsadas, 0
+    mov estadoTurno, 0
+    mov letraJugador, 0
+
+    ; Limpiar historial de letras
+    mov si, 0
+
+limpiarLetrasUsadas:
+
+    mov letrasUsadas[si], 0
+
+    inc si
+    cmp si, 26
+    jb limpiarLetrasUsadas
+
+    ; Preparar los guiones de la nueva palabra
+    call prepararPalabra
+
+    pop si
+
+    ret
+
+reiniciarPartida ENDP
 
 mostrarCategoria PROC
 
