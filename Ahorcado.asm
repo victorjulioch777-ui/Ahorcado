@@ -146,18 +146,32 @@ mensajeConfirmacion DB 0Dh, 0Ah
 mensajeContinuar DB 0Dh, 0Ah
                  DB "Presione una tecla para continuar...$"
 
+mensajeCategorias DB 0Dh, 0Ah
+                  DB "Seleccione una categoria:", 0Dh, 0Ah
+                  DB "1. Animales", 0Dh, 0Ah
+                  DB "2. Paises", 0Dh, 0Ah
+                  DB "3. Computacion", 0Dh, 0Ah
+                  DB "Opcion: $"
+
+mensajeCategoriaActual DB 0Dh, 0Ah
+                       DB "Categoria: $"
+
+textoAnimales DB "Animales$"
+textoPaises DB "Paises$"
+textoComputacion DB "Computacion$"
+
 ;-----------------------------                     
 ;2. Variables de los jugadores
 ;-----------------------------
 
-;Almacena el caracter ingresado por el teclado
-letraJugador db 0
+letraJugador DB 0
 
 nickname1 DB 12, 0, 12 DUP(0)
 nickname2 DB 12, 0, 12 DUP(0)
 
 modalidad DB 0
 dificultad DB 0
+categoria DB 0
 
 jugadorActual DB 1
 
@@ -168,10 +182,93 @@ rondaActual DB 1
 ;3. Palabras y categorias
 ;------------------------
 
-palabra1 db "GATO", 0
-palabra2 db "TECLADO", 0
-Palabra3 db "COMPUTADORA", 0
-palabraVisible db 20 dup('_'), '$'                                                                                                                                                         
+; Facil
+animal1 DB "GATO", 0
+animal2 DB "LOBO", 0
+animal3 DB "TIGRE", 0
+
+; Intermedio
+animal4 DB "JIRAFA", 0
+animal5 DB "CONEJO", 0
+animal6 DB "ELEFANTE", 0
+
+; Dificil
+animal7 DB "COCODRILO", 0
+animal8 DB "RINOCERONTE", 0
+animal9 DB "HIPOPOTAMO", 0
+
+
+;================================
+; CATEGORIA 2: PAISES
+;================================
+
+; Facil
+pais1 DB "PERU", 0
+pais2 DB "CUBA", 0
+pais3 DB "CHILE", 0
+
+; Intermedio
+pais4 DB "MEXICO", 0
+pais5 DB "CANADA", 0
+pais6 DB "COLOMBIA", 0
+
+; Dificil
+pais7 DB "ARGENTINA", 0
+pais8 DB "VENEZUELA", 0
+pais9 DB "MADAGASCAR", 0
+
+
+;================================
+; CATEGORIA 3: COMPUTACION
+;================================
+
+; Facil
+computacion1 DB "BYTE", 0
+computacion2 DB "CHIP", 0
+computacion3 DB "RATON", 0
+
+; Intermedio
+computacion4 DB "TECLADO", 0
+computacion5 DB "MEMORIA", 0
+computacion6 DB "PROCESO", 0
+
+; Dificil
+computacion7 DB "COMPUTADORA", 0
+computacion8 DB "PROCESADOR", 0
+computacion9 DB "PROGRAMACION", 0
+
+tablaPalabras DW OFFSET animal1
+              DW OFFSET animal2
+              DW OFFSET animal3
+              DW OFFSET animal4
+              DW OFFSET animal5
+              DW OFFSET animal6
+              DW OFFSET animal7
+              DW OFFSET animal8
+              DW OFFSET animal9
+
+              DW OFFSET pais1
+              DW OFFSET pais2
+              DW OFFSET pais3
+              DW OFFSET pais4
+              DW OFFSET pais5
+              DW OFFSET pais6
+              DW OFFSET pais7
+              DW OFFSET pais8
+              DW OFFSET pais9
+
+              DW OFFSET computacion1
+              DW OFFSET computacion2
+              DW OFFSET computacion3
+              DW OFFSET computacion4
+              DW OFFSET computacion5
+              DW OFFSET computacion6
+              DW OFFSET computacion7
+              DW OFFSET computacion8
+              DW OFFSET computacion9
+
+; Palabra que observa el jugador
+palabraVisible DB 20 DUP('_'), '$'                                                                                                                                                         
 
 ;----------------------
 ;4. Variables del juego   
@@ -183,7 +280,7 @@ letrasUsadas db 26 dup(0)
 cantidadUsadas db 0
 longitudPalabra db 0
 palabraActual dw 0
-numeroPalabra db 3
+numeroPalabra db 0
 estadoTurno db 0 
 
 ;----------------------------
@@ -197,79 +294,23 @@ main proc
     mov ax, @data
     mov ds, ax
     
+    ; Configuracion inicial
     call configurarJuego
-    
-    ; Se encarga de obtener la hora del sistema
-    mov ah, 2Ch
-    int 21h
-    
-    ;Se encarga de combinar segundos y centesimas
-    mov al, dl
-    add al, dh
-    mov ah, 0
-    
-    ;Se encarga de dividir entre la cantidad de palabras
-    mov bl, 3
-    div bl
-    
-    ;Se encarga de obtener un numero entre 1 y 3
-    inc ah
-    mov numeroPalabra, ah
-    
-    ;Se encarga de seleccionar la palabra
-    mov al, numeroPalabra 
-    cmp al, 1
-    je seleccionarGato    
-    cmp al, 2
-    je seleccionarTeclado    
-    cmp al, 3
-    je seleccionarComputadora    
-    jmp seleccionarGato
-    
-    seleccionarGato:
-        lea ax, palabra1
-        jmp guardarSeleccion
-        
-    seleccionarTeclado:
-        lea ax, palabra2
-        jmp guardarSeleccion
-        
-    seleccionarComputadora:
-        lea ax, palabra3
-        jmp guardarSeleccion
-        
-    guardarSeleccion:
-        mov palabraActual, ax
-        
-        mov bx, palabraActual
-        mov si, 0
-        
-    contarLetras:
-        ;Leer el caracter de la palabra seleccionado
-        mov al, [bx+si]
-        
-        ;Comprobar si encontramos el terminador
-        cmp al, 0
-        je longitudCalculada
-        
-        ;Avanzar a la siguiente posicion
-        inc si
-        jmp contarLetras
-            
-    longitudCalculada:
-        mov ax, si
-        mov longitudPalabra, al
-        
-        mov bx, si
-        mov palabraVisible[bx], '$'                
-         
-    nuevoIntento:
 
+    ; Seleccionar palabra del banco
+    call seleccionarPalabra
+
+    ; Preparar palabra oculta
+    call prepararPalabra
+
+    nuevoIntento:
+    
         call limpiarPantalla
         call mostrarTitulo
     
         call mostrarJugador
         call mostrarNivel
+        call mostrarCategoria
     
         call mostrarDibujo
         call mostrarPalabra
@@ -279,7 +320,7 @@ main proc
         mov si, 0
         mov encontro, 0
     
-        jmp mostrarEstadoTurno
+        jmp mostrarEstadoTurno  
     
     mostrarEstadoTurno:
     
@@ -498,6 +539,7 @@ main proc
         
         call mostrarJugador
         call mostrarNivel
+        call mostrarCategoria
     
         call mostrarDibujo
     
@@ -528,6 +570,7 @@ main proc
         
         call mostrarJugador
         call mostrarNivel
+        call mostrarCategoria
         
         call mostrarDibujo
     
@@ -756,6 +799,38 @@ dificultadInvalida:
 
 seleccionarDificultad ENDP
 
+seleccionarCategoria PROC
+
+repetirCategoria:
+
+    call limpiarPantalla
+    call mostrarTitulo
+
+    lea dx, mensajeCategorias
+    mov ah, 09h
+    int 21h
+
+    mov ah, 01h
+    int 21h
+
+    cmp al, '1'
+    jb categoriaInvalida
+
+    cmp al, '3'
+    ja categoriaInvalida
+
+    sub al, 30h
+    mov categoria, al
+
+    ret
+
+categoriaInvalida:
+
+    call mostrarErrorOpcion
+    jmp repetirCategoria
+
+seleccionarCategoria ENDP
+
 seleccionarRondas PROC
 
     mov cantidadRondas, 1
@@ -803,6 +878,8 @@ configurarJuego PROC
     call registrarJugadores
 
     call seleccionarDificultad
+
+    call seleccionarCategoria
 
     call seleccionarRondas
 
@@ -1216,7 +1293,163 @@ imprimirNivel:
 
 mostrarNivel ENDP
 
+seleccionarPalabra PROC
 
+    push ax
+    push bx
+    push cx
+    push dx
+
+    ; Calcular posicion inicial de la categoria
+    mov al, categoria
+    dec al
+
+    mov bl, 9
+    mul bl
+
+    mov cx, ax
+
+    ; Calcular desplazamiento de dificultad
+    mov al, dificultad
+    dec al
+
+    mov bl, 3
+    mul bl
+
+    add cx, ax
+
+    ; Obtener hora del sistema
+    push cx
+
+    mov ah, 2Ch
+    int 21h
+
+    mov al, dl
+    add al, dh
+
+    pop cx
+
+    ; Obtener numero aleatorio entre 0 y 2
+    mov ah, 0
+    mov bl, 3
+    div bl
+
+    ; Obtener el residuo
+    mov al, ah
+    mov ah, 0
+
+    ; Calcular indice definitivo
+    add ax, cx
+
+    mov numeroPalabra, al
+
+    ; Cada direccion ocupa 2 bytes
+    mov bx, ax
+    shl bx, 1
+
+    ; Obtener direccion de la palabra
+    mov ax, tablaPalabras[bx]
+    mov palabraActual, ax
+
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+seleccionarPalabra ENDP
+
+prepararPalabra PROC
+
+    push ax
+    push bx
+    push si
+
+    ; Restaurar todos los guiones
+    mov si, 0
+
+restaurarGuiones:
+
+    mov palabraVisible[si], '_'
+
+    inc si
+    cmp si, 20
+    jb restaurarGuiones
+
+    mov palabraVisible[si], '$'
+
+    ; Obtener direccion de la palabra
+    mov bx, palabraActual
+    mov si, 0
+
+contarLongitud:
+
+    mov al, [bx+si]
+
+    cmp al, 0
+    je guardarLongitud
+
+    inc si
+    jmp contarLongitud
+
+guardarLongitud:
+
+    mov ax, si
+    mov longitudPalabra, al
+
+    mov palabraVisible[si], '$'
+
+    pop si
+    pop bx
+    pop ax
+
+    ret
+
+prepararPalabra ENDP
+
+mostrarCategoria PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeCategoriaActual
+    mov ah, 09h
+    int 21h
+
+    cmp categoria, 1
+    je categoriaAnimales
+
+    cmp categoria, 2
+    je categoriaPaises
+
+    jmp categoriaComputacion
+
+categoriaAnimales:
+
+    lea dx, textoAnimales
+    jmp imprimirCategoria
+
+categoriaPaises:
+
+    lea dx, textoPaises
+    jmp imprimirCategoria
+
+categoriaComputacion:
+
+    lea dx, textoComputacion
+
+imprimirCategoria:
+
+    mov ah, 09h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarCategoria ENDP
 
 ;---------------------------
 ;8. Comodines y temporizador 
