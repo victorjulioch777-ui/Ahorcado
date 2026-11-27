@@ -214,6 +214,19 @@ mensajeFinRondas DB 0Dh, 0Ah
                  DB "================================", 0Dh, 0Ah
                  DB "      PARTIDA FINALIZADA        ", 0Dh, 0Ah
                  DB "================================", 0Dh, 0Ah, "$"
+                 
+;================================
+; MENSAJES DE PUNTUACION
+;================================
+
+mensajePuntaje DB 0Dh, 0Ah
+               DB "Puntaje acumulado: $"
+
+mensajePuntosRonda DB 0Dh, 0Ah
+                   DB "Puntos obtenidos: $"
+
+mensajePalabrasAdivinadas DB 0Dh, 0Ah
+                         DB "Palabras adivinadas: $"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -354,7 +367,33 @@ entradaSecretaInvalida DB 0
 
 ;----------------------------
 ;5. Puntuacion y estadisticas
-;----------------------------
+;---------------------------- 
+
+; Puntajes acumulados
+puntajeJugador1 DW 0
+puntajeJugador2 DW 0
+
+; Puntos obtenidos en la ronda actual
+puntosRonda DW 0
+
+; Palabras adivinadas correctamente
+palabrasAdivinadas1 DB 0
+palabrasAdivinadas2 DB 0
+
+; Cantidad de rondas jugadas
+rondasJugadas1 DB 0
+rondasJugadas2 DB 0
+
+; Total de errores cometidos
+erroresTotales1 DW 0
+erroresTotales2 DW 0
+
+; Resultado de la ronda
+victoriaRonda DB 0
+
+; Historial de errores por ronda
+historialErrores1 DB 27 DUP(0)
+historialErrores2 DB 27 DUP(0)
 
 .code
 
@@ -421,6 +460,7 @@ main proc
         call mostrarNivel
         call mostrarCategoria
         call mostrarRonda
+        call mostrarPuntaje
     
         call mostrarDibujo
         call mostrarPalabra
@@ -643,26 +683,33 @@ main proc
         jmp finalizar
         
     mostrarVictoria:
-        call limpiarPantalla
+
+        ; Registrar victoria
+        mov victoriaRonda, 1
     
+        call registrarResultado
+    
+        ; Mostrar pantalla final
+        call limpiarPantalla
         call mostrarTitulo
-        
+    
         call mostrarJugador
         call mostrarNivel
         call mostrarCategoria
         call mostrarRonda
+        call mostrarPuntaje
     
         call mostrarDibujo
-    
         call mostrarPalabra
-    
         call mostrarIntentos
-    
         call mostrarHistorial
     
         lea dx, mensajeVictoriaFinal
         mov ah, 09h
         int 21h
+    
+        ; Mostrar puntos obtenidos
+        call mostrarPuntosRonda
     
         jmp terminarPartida
         
@@ -675,27 +722,34 @@ main proc
         jmp nuevoIntento
          
     finPartida:
-        call limpiarPantalla
+        ; Registrar derrota
+        mov victoriaRonda, 0
     
+        call registrarResultado
+    
+        ; Mostrar pantalla final
+        call limpiarPantalla
         call mostrarTitulo
-        
+    
         call mostrarJugador
         call mostrarNivel
         call mostrarCategoria
         call mostrarRonda
-        
+        call mostrarPuntaje
+    
         call mostrarDibujo
-    
         call mostrarPalabra
-    
         call mostrarIntentos
-    
         call mostrarHistorial
     
         lea dx, mensajeDerrotaFinal
         mov ah, 09h
         int 21h
     
+        ; Mostrar puntos obtenidos
+        call mostrarPuntosRonda
+    
+        ; Mostrar palabra correcta
         lea dx, mensajeRevelar
         mov ah, 09h
         int 21h
@@ -1679,12 +1733,15 @@ reiniciarPartida PROC
 
     push si
 
-    ; Reiniciar variables de la partida
     mov errores, 0
     mov encontro, 0
     mov cantidadUsadas, 0
     mov estadoTurno, 0
     mov letraJugador, 0
+    
+    ; Reiniciar puntuacion de la ronda
+    mov puntosRonda, 0
+    mov victoriaRonda, 0
 
     ; Limpiar historial de letras
     mov si, 0
@@ -2095,6 +2152,232 @@ intercambiarJugadores ENDP
 
 ;---------------
 ;9. Estadisticas
-;---------------
+;--------------- 
+
+imprimirNumero PROC
+
+    push ax
+    push bx
+    push cx
+    push dx
+
+    ; Caso especial: numero cero
+    cmp ax, 0
+    jne convertirNumero
+
+    mov dl, '0'
+    mov ah, 02h
+    int 21h
+
+    jmp finImprimirNumero
+
+convertirNumero:
+
+    mov bx, 10
+    mov cx, 0
+
+extraerDigitos:
+
+    ; Dividir DX:AX entre 10
+    mov dx, 0
+    div bx
+
+    ; Guardar residuo en la pila
+    push dx
+
+    inc cx
+
+    ; Repetir mientras exista cociente
+    cmp ax, 0
+    jne extraerDigitos
+
+imprimirDigitos:
+
+    ; Recuperar digito de la pila
+    pop dx
+
+    ; Convertir a ASCII
+    add dl, 30h
+
+    ; Imprimir caracter
+    mov ah, 02h
+    int 21h
+
+    loop imprimirDigitos
+
+finImprimirNumero:
+
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+imprimirNumero ENDP
+
+calcularPuntos PROC
+
+    push ax
+    push bx
+
+    ; Si perdio, obtiene cero puntos
+    cmp victoriaRonda, 1
+    jne calcularDerrota
+
+    ; Multiplicar errores por 15
+    mov al, errores
+    mov bl, 15
+
+    mul bl
+
+    ; Aplicar formula: 100 - errores * 15
+    mov bx, 100
+    sub bx, ax
+
+    mov puntosRonda, bx
+
+    jmp finCalcularPuntos
+
+calcularDerrota:
+
+    mov puntosRonda, 0
+
+finCalcularPuntos:
+
+    pop bx
+    pop ax
+
+    ret
+
+calcularPuntos ENDP
+
+registrarResultado PROC
+
+    push ax
+    push bx
+
+    ; Calcular puntos de la ronda
+    call calcularPuntos
+
+    ; Determinar jugador actual
+    cmp jugadorActual, 1
+    je registrarJugador1
+
+    jmp registrarJugador2
+
+registrarJugador1:
+
+    ; Acumular puntos
+    mov ax, puntosRonda
+    add puntajeJugador1, ax
+
+    ; Guardar errores de la ronda
+    mov bx, 0
+    mov bl, rondasJugadas1
+
+    mov al, errores
+    mov historialErrores1[bx], al
+
+    ; Acumular errores
+    mov ah, 0
+    add erroresTotales1, ax
+
+    ; Incrementar rondas jugadas
+    inc rondasJugadas1
+
+    ; Comprobar si gano
+    cmp victoriaRonda, 1
+    jne finRegistrarResultado
+
+    inc palabrasAdivinadas1
+
+    jmp finRegistrarResultado
+
+registrarJugador2:
+
+    ; Acumular puntos
+    mov ax, puntosRonda
+    add puntajeJugador2, ax
+
+    ; Guardar errores de la ronda
+    mov bx, 0
+    mov bl, rondasJugadas2
+
+    mov al, errores
+    mov historialErrores2[bx], al
+
+    ; Acumular errores
+    mov ah, 0
+    add erroresTotales2, ax
+
+    ; Incrementar rondas jugadas
+    inc rondasJugadas2
+
+    ; Comprobar si gano
+    cmp victoriaRonda, 1
+    jne finRegistrarResultado
+
+    inc palabrasAdivinadas2
+
+finRegistrarResultado:
+
+    pop bx
+    pop ax
+
+    ret
+
+registrarResultado ENDP
+
+mostrarPuntaje PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajePuntaje
+    mov ah, 09h
+    int 21h
+
+    ; Determinar jugador actual
+    cmp jugadorActual, 1
+    je puntajeActualJugador1
+
+    mov ax, puntajeJugador2
+    jmp imprimirPuntajeActual
+
+puntajeActualJugador1:
+
+    mov ax, puntajeJugador1
+
+imprimirPuntajeActual:
+
+    call imprimirNumero
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarPuntaje ENDP
+
+mostrarPuntosRonda PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajePuntosRonda
+    mov ah, 09h
+    int 21h
+
+    mov ax, puntosRonda
+
+    call imprimirNumero
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarPuntosRonda ENDP
 
 end main
