@@ -174,6 +174,46 @@ mensajeSinPalabras DB 0Dh, 0Ah
 mensajeBancoAgotado DB 0Dh, 0Ah
                     DB "Ha utilizado todas las palabras", 0Dh, 0Ah
                     DB "del banco de palabras.$"
+                    
+;================================
+; MENSAJES DE MULTIJUGADOR
+;================================
+
+mensajeTurnoSecreto DB 0Dh, 0Ah
+                    DB "Jugador que escribe: $"
+
+mensajeIngresarSecreta DB 0Dh, 0Ah
+                       DB "Ingrese la palabra secreta: $"
+
+mensajeNoMirar DB 0Dh, 0Ah
+               DB "El otro jugador no debe mirar.", 0Dh, 0Ah, "$"
+
+mensajeSecretaGuardada DB 0Dh, 0Ah
+                       DB "Palabra secreta guardada.$"
+
+mensajeSecretaInvalida DB 0Dh, 0Ah
+                       DB "Palabra invalida.", 0Dh, 0Ah
+                       DB "Use solo letras y respete la longitud.$"
+
+mensajeLongitudFacil DB 0Dh, 0Ah
+                     DB "Longitud: 4 a 5 letras.$"
+
+mensajeLongitudIntermedio DB 0Dh, 0Ah
+                          DB "Longitud: 6 a 8 letras.$"
+
+mensajeLongitudDificil DB 0Dh, 0Ah
+                       DB "Longitud: 9 a 12 letras.$"
+
+mensajeTurnoAdivinar DB 0Dh, 0Ah
+                     DB "Turno para adivinar: $"
+
+mensajeRondaActual DB 0Dh, 0Ah
+                   DB "Ronda: $"
+
+mensajeFinRondas DB 0Dh, 0Ah
+                 DB "================================", 0Dh, 0Ah
+                 DB "      PARTIDA FINALIZADA        ", 0Dh, 0Ah
+                 DB "================================", 0Dh, 0Ah, "$"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -189,6 +229,7 @@ dificultad DB 0
 categoria DB 0
 
 jugadorActual DB 1
+jugadorSecreto DB 1
 
 cantidadRondas DB 1
 rondaActual DB 1
@@ -283,7 +324,9 @@ tablaPalabras DW OFFSET animal1
               DW OFFSET computacion9
 
 ; Palabra que observa el jugador
-palabraVisible DB 20 DUP('_'), '$'                                                                                                                                                         
+palabraVisible DB 20 DUP('_'), '$'
+; Palabra ingresada por un jugador
+palabraSecreta DB 21 DUP(0)                                                                                                                                                         
 
 ;----------------------
 ;4. Variables del juego   
@@ -303,7 +346,11 @@ palabrasUtilizadas DB 27 DUP(0)
 totalPalabrasUsadas DB 0
 
 ; Control de nuevas partidas
-continuarPartida DB 0 
+continuarPartida DB 0
+
+; Control del ingreso de palabra secreta
+longitudSecreta DB 0
+entradaSecretaInvalida DB 0 
 
 ;----------------------------
 ;5. Puntuacion y estadisticas
@@ -320,11 +367,16 @@ main proc
 
     iniciarPartida:
 
+        ; Determinar modalidad de juego
+        cmp modalidad, 2
+        je iniciarRondaMultijugador
+    
+        ; Modalidad maquina vs jugador
         cmp totalPalabrasUsadas, 27
         jne buscarNuevaPalabra
-
+    
         jmp bancoAgotado
-
+    
     buscarNuevaPalabra:
     
         call seleccionarPalabra
@@ -349,7 +401,17 @@ main proc
         call seleccionarCategoria
     
         jmp iniciarPartida
-
+    
+    iniciarRondaMultijugador:
+    
+        call ingresarPalabraSecreta
+    
+        call reiniciarPartida
+    
+        call entregarTurno
+    
+        jmp nuevoIntento
+    
     nuevoIntento:
     
         call limpiarPantalla
@@ -358,6 +420,7 @@ main proc
         call mostrarJugador
         call mostrarNivel
         call mostrarCategoria
+        call mostrarRonda
     
         call mostrarDibujo
         call mostrarPalabra
@@ -587,6 +650,7 @@ main proc
         call mostrarJugador
         call mostrarNivel
         call mostrarCategoria
+        call mostrarRonda
     
         call mostrarDibujo
     
@@ -618,6 +682,7 @@ main proc
         call mostrarJugador
         call mostrarNivel
         call mostrarCategoria
+        call mostrarRonda
         
         call mostrarDibujo
     
@@ -653,23 +718,59 @@ main proc
         
     terminarPartida:
 
-        ; El multijugador se implementara
-        ; en el siguiente modulo
-        cmp modalidad, 1
-        jne salirJuego
+        ; Determinar modalidad
+        cmp modalidad, 2
+        je terminarRondaMultijugador
     
-        ; Comprobar si quedan palabras
+        ;================================
+        ; MAQUINA VS JUGADOR
+        ;================================
+    
         cmp totalPalabrasUsadas, 27
         je bancoAgotado
     
-        ; Preguntar si desea continuar
         call preguntarOtraPartida
     
         cmp continuarPartida, 1
         jne salirJuego
     
-        ; Iniciar otra partida
         jmp iniciarPartida
+    
+        ;================================
+        ; JUGADOR VS JUGADOR
+        ;================================
+    
+    terminarRondaMultijugador:
+    
+        ; Mantener visible el resultado
+        call esperarTecla
+    
+        ; Comprobar si era la ultima ronda
+        mov al, rondaActual
+        cmp al, cantidadRondas
+    
+        jae finalizarMultijugador
+    
+        ; Avanzar a la siguiente ronda
+        inc rondaActual
+    
+        ; Intercambiar los roles
+        call intercambiarJugadores
+    
+        jmp iniciarPartida
+    
+    finalizarMultijugador:
+    
+        call limpiarPantalla
+        call mostrarTitulo
+    
+        lea dx, mensajeFinRondas
+        mov ah, 09h
+        int 21h
+    
+        call esperarTecla
+    
+        jmp salirJuego
     
     bancoAgotado:
     
@@ -680,12 +781,13 @@ main proc
         call esperarTecla
     
         jmp salirJuego
-            
-    salirJuego:
-        ;Se encarga de terminar la ejecucion del juego
-        .exit
     
+    salirJuego:
+    
+        .exit
+
 main endp
+
 ;--------------------------
 ;6. Procedimientos de menus
 ;--------------------------
@@ -839,6 +941,16 @@ registrarJugadores PROC
 finRegistroJugadores:
 
     mov jugadorActual, 1
+    mov jugadorSecreto, 1
+
+    cmp modalidad, 2
+    jne terminarRegistro
+
+    ; En multijugador comienza adivinando
+    ; el jugador 2
+    mov jugadorActual, 2
+
+terminarRegistro:
 
     ret
 
@@ -1636,6 +1748,346 @@ imprimirCategoria:
     ret
 
 mostrarCategoria ENDP
+
+mostrarJugadorSecreto PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeTurnoSecreto
+    mov ah, 09h
+    int 21h
+
+    cmp jugadorSecreto, 1
+    je secretoJugador1
+
+    lea dx, nickname2
+    jmp imprimirJugadorSecreto
+
+secretoJugador1:
+
+    lea dx, nickname1
+
+imprimirJugadorSecreto:
+
+    call imprimirNickname
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarJugadorSecreto ENDP
+
+mostrarRonda PROC
+
+    push ax
+    push dx
+
+    ; Solo mostrar rondas en multijugador
+    cmp modalidad, 2
+    jne finMostrarRonda
+
+    lea dx, mensajeRondaActual
+    mov ah, 09h
+    int 21h
+
+    ; Mostrar ronda actual
+    mov dl, rondaActual
+    add dl, 30h
+    mov ah, 02h
+    int 21h
+
+    ; Mostrar separador
+    mov dl, '/'
+    mov ah, 02h
+    int 21h
+
+    ; Mostrar cantidad total de rondas
+    mov dl, cantidadRondas
+    add dl, 30h
+    mov ah, 02h
+    int 21h
+
+finMostrarRonda:
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarRonda ENDP
+
+mostrarLongitudPermitida PROC
+
+    push ax
+    push dx
+
+    cmp dificultad, 1
+    je longitudNivelFacil
+
+    cmp dificultad, 2
+    je longitudNivelIntermedio
+
+    jmp longitudNivelDificil
+
+longitudNivelFacil:
+
+    lea dx, mensajeLongitudFacil
+    jmp imprimirLongitudPermitida
+
+longitudNivelIntermedio:
+
+    lea dx, mensajeLongitudIntermedio
+    jmp imprimirLongitudPermitida
+
+longitudNivelDificil:
+
+    lea dx, mensajeLongitudDificil
+
+imprimirLongitudPermitida:
+
+    mov ah, 09h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarLongitudPermitida ENDP
+
+ingresarPalabraSecreta PROC
+
+    push ax
+    push bx
+    push dx
+    push si
+
+repetirPalabraSecreta:
+
+    call limpiarPantalla
+    call mostrarTitulo
+    call mostrarRonda
+    call mostrarJugadorSecreto
+    call mostrarNivel
+    call mostrarCategoria
+    call mostrarLongitudPermitida
+
+    lea dx, mensajeNoMirar
+    mov ah, 09h
+    int 21h
+
+    lea dx, mensajeIngresarSecreta
+    mov ah, 09h
+    int 21h
+
+    mov si, 0
+    mov longitudSecreta, 0
+    mov entradaSecretaInvalida, 0
+
+leerCaracterSecreto:
+
+    ; Leer caracter sin mostrarlo
+    mov ah, 08h
+    int 21h
+
+    ; Enter termina el ingreso
+    cmp al, 0Dh
+    je validarPalabraSecreta
+
+    ; Ignorar teclas extendidas
+    cmp al, 0
+    jne comprobarRetroceso
+
+    mov ah, 08h
+    int 21h
+
+    jmp leerCaracterSecreto
+
+comprobarRetroceso:
+
+    ; Permitir borrar la ultima letra
+    cmp al, 08h
+    je borrarCaracterSecreto
+
+    ; Convertir minusculas a mayusculas
+    cmp al, 'a'
+    jb validarCaracterSecreto
+
+    cmp al, 'z'
+    ja validarCaracterSecreto
+
+    sub al, 20h
+
+validarCaracterSecreto:
+
+    cmp al, 'A'
+    jb marcarEntradaInvalida
+
+    cmp al, 'Z'
+    ja marcarEntradaInvalida
+
+    ; Evitar desbordamiento del arreglo
+    cmp si, 20
+    jae marcarEntradaInvalida
+
+    ; Guardar caracter sin imprimirlo
+    mov palabraSecreta[si], al
+
+    inc si
+
+    jmp leerCaracterSecreto
+
+borrarCaracterSecreto:
+
+    cmp si, 0
+    je leerCaracterSecreto
+
+    dec si
+
+    mov palabraSecreta[si], 0
+
+    jmp leerCaracterSecreto
+
+marcarEntradaInvalida:
+
+    mov entradaSecretaInvalida, 1
+
+    jmp leerCaracterSecreto
+
+validarPalabraSecreta:
+
+    ; Comprobar caracteres invalidos
+    cmp entradaSecretaInvalida, 1
+    je rechazarPalabraSecreta
+
+    mov ax, si
+    mov longitudSecreta, al
+
+    cmp dificultad, 1
+    je validarSecretaFacil
+
+    cmp dificultad, 2
+    je validarSecretaIntermedia
+
+    jmp validarSecretaDificil
+
+validarSecretaFacil:
+
+    cmp si, 4
+    jb rechazarPalabraSecreta
+
+    cmp si, 5
+    ja rechazarPalabraSecreta
+
+    jmp aceptarPalabraSecreta
+
+validarSecretaIntermedia:
+
+    cmp si, 6
+    jb rechazarPalabraSecreta
+
+    cmp si, 8
+    ja rechazarPalabraSecreta
+
+    jmp aceptarPalabraSecreta
+
+validarSecretaDificil:
+
+    cmp si, 9
+    jb rechazarPalabraSecreta
+
+    cmp si, 12
+    ja rechazarPalabraSecreta
+
+    jmp aceptarPalabraSecreta
+
+rechazarPalabraSecreta:
+
+    lea dx, mensajeSecretaInvalida
+    mov ah, 09h
+    int 21h
+
+    call esperarTecla
+
+    jmp repetirPalabraSecreta
+
+aceptarPalabraSecreta:
+
+    ; Agregar terminador de cadena
+    mov palabraSecreta[si], 0
+
+    ; Guardar direccion de la palabra
+    lea ax, palabraSecreta
+    mov palabraActual, ax
+
+    lea dx, mensajeSecretaGuardada
+    mov ah, 09h
+    int 21h
+
+    call esperarTecla
+
+    pop si
+    pop dx
+    pop bx
+    pop ax
+
+    ret
+
+ingresarPalabraSecreta ENDP
+
+entregarTurno PROC
+
+    push ax
+    push dx
+
+    call limpiarPantalla
+    call mostrarTitulo
+    call mostrarRonda
+
+    lea dx, mensajeTurnoAdivinar
+    mov ah, 09h
+    int 21h
+
+    cmp jugadorActual, 1
+    je entregarJugador1
+
+    lea dx, nickname2
+    jmp imprimirEntregaTurno
+
+entregarJugador1:
+
+    lea dx, nickname1
+
+imprimirEntregaTurno:
+
+    call imprimirNickname
+
+    call esperarTecla
+
+    pop dx
+    pop ax
+
+    ret
+
+entregarTurno ENDP
+
+intercambiarJugadores PROC
+
+    push ax
+
+    mov al, jugadorActual
+
+    xchg al, jugadorSecreto
+
+    mov jugadorActual, al
+
+    pop ax
+
+    ret
+
+intercambiarJugadores ENDP
 
 ;---------------------------
 ;8. Comodines y temporizador 
