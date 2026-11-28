@@ -236,7 +236,10 @@ mensajeComodines DB 0Dh, 0Ah
                  DB "Comodines disponibles: $"
 
 mensajeOpcionComodin DB 0Dh, 0Ah
-                     DB "[1] Utilizar comodin$"
+                     DB "[1] Utilizar comodin", 0Dh, 0Ah
+                     DB "[2] Rendirse", 0Dh, 0Ah
+                     DB "[3] Reiniciar juego", 0Dh, 0Ah
+                     DB "[4] Salir$"
 
 mensajeComodinUsado DB 0Dh, 0Ah
                     DB "Comodin utilizado! Letra revelada: $"
@@ -247,6 +250,30 @@ mensajeSinComodines DB 0Dh, 0Ah
 mensajeComodinBloqueado DB 0Dh, 0Ah
                         DB "Solo falta una letra distinta.", 0Dh, 0Ah
                         DB "No puede utilizar el comodin.$"
+
+;================================
+; MENSAJES DEL MENU DE ACCIONES
+;================================
+
+mensajeConfirmarRendicion DB 0Dh, 0Ah
+                         DB "Desea rendirse?$"
+
+mensajeConfirmarReinicio DB 0Dh, 0Ah
+                        DB "Desea reiniciar todo el juego?$"
+
+mensajeConfirmarSalida DB 0Dh, 0Ah
+                       DB "Desea salir del juego?$"
+
+mensajeConfirmarAccion DB 0Dh, 0Ah
+                      DB "[1] Si", 0Dh, 0Ah
+                      DB "[2] No", 0Dh, 0Ah
+                      DB "Opcion: $"
+
+mensajeRendicion DB 0Dh, 0Ah
+                 DB "El jugador se ha rendido.$"
+
+mensajeGanadorRendicion DB 0Dh, 0Ah
+                       DB "Ganador por rendicion: $"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -424,6 +451,13 @@ erroresTotales2 DW 0
 
 ; Resultado de la ronda
 victoriaRonda DB 0
+resultadoRegistrado DB 0
+rendicionRonda DB 0
+ganadorRonda DB 0
+
+; Victorias por rendicion, sin palabras adivinadas ni puntos
+victoriasRendicion1 DB 0
+victoriasRendicion2 DB 0
 
 ; Historial de errores por ronda
 historialErrores1 DB 27 DUP(0)
@@ -436,7 +470,14 @@ main proc
     mov ax, @data
     mov ds, ax
     
-    call configurarJuego
+    configurarNuevaPartida:
+
+        call configurarJuego
+
+        cmp modalidad, 0
+        jne iniciarPartida
+
+        jmp salirJuego
 
     iniciarPartida:
 
@@ -582,10 +623,8 @@ main proc
     
     solicitarLetra:
     
-        ; Mostrar opcion de comodin
-        lea dx, mensajeOpcionComodin
-        mov ah, 09h
-        int 21h
+        ; Mostrar menu de acciones
+        call mostrarMenuAcciones
     
         ; Solicitar entrada
         lea dx, mensajeIngresar
@@ -597,11 +636,60 @@ main proc
     
         ; Comprobar si solicita comodin
         cmp al, '1'
-        jne procesarLetraNormal
+        jne comprobarRendicion
     
         call utilizarComodin
         
         jmp nuevoIntento
+
+    comprobarRendicion:
+
+        cmp al, '2'
+        jne comprobarReinicio
+
+        lea dx, mensajeConfirmarRendicion
+        call confirmarAccion
+        jc aceptarRendicion
+
+        jmp nuevoIntento
+
+    aceptarRendicion:
+
+        call rendirse
+
+        jmp finPartida
+
+    comprobarReinicio:
+
+        cmp al, '3'
+        jne comprobarSalida
+
+        lea dx, mensajeConfirmarReinicio
+        call confirmarAccion
+        jc aceptarReinicio
+
+        jmp nuevoIntento
+
+    aceptarReinicio:
+
+        call reiniciarJuego
+
+        jmp configurarNuevaPartida
+
+    comprobarSalida:
+
+        cmp al, '4'
+        jne procesarLetraNormal
+
+        lea dx, mensajeConfirmarSalida
+        call confirmarAccion
+        jc aceptarSalida
+
+        jmp nuevoIntento
+
+    aceptarSalida:
+
+        jmp salirJuego
         
     procesarLetraNormal:
 
@@ -771,6 +859,8 @@ main proc
 
         ; Registrar victoria
         mov victoriaRonda, 1
+        mov al, jugadorActual
+        mov ganadorRonda, al
     
         call registrarResultado
     
@@ -810,6 +900,14 @@ main proc
     finPartida:
         ; Registrar derrota
         mov victoriaRonda, 0
+
+        cmp modalidad, 2
+        jne registrarDerrota
+
+        mov al, jugadorSecreto
+        mov ganadorRonda, al
+
+    registrarDerrota:
     
         call registrarResultado
     
@@ -849,13 +947,17 @@ main proc
         mov dl, [bx+si]
     
         cmp dl, 0
-        je terminarPartida
+        je finRevelarPalabra
     
         mov ah, 02h
         int 21h
     
         inc si
         jmp revelarPalabra
+
+    finRevelarPalabra:
+
+        call mostrarRendicion
         
     terminarPartida:
 
@@ -924,7 +1026,8 @@ main proc
         jmp salirJuego
     
     salirJuego:
-    
+
+        ; Punto de integracion para las estadisticas finales del modulo 9
         .exit
 
 main endp
@@ -968,8 +1071,18 @@ guardarModalidad:
 
 cerrarProgramaMenu:
 
-    mov ax, 4C00h
-    int 21h
+    lea dx, mensajeConfirmarSalida
+    call confirmarAccion
+    jc confirmarSalidaMenu
+
+    jmp repetirModalidad
+
+confirmarSalidaMenu:
+
+    ; Regresar a MAIN para centralizar la salida
+    mov modalidad, 0
+
+    ret
 
 seleccionarModalidad ENDP
 
@@ -1204,6 +1317,13 @@ seleccionarRondas ENDP
 configurarJuego PROC
 
     call seleccionarModalidad
+
+    cmp modalidad, 0
+    jne continuarConfiguracion
+
+    ret
+
+continuarConfiguracion:
 
     call registrarJugadores
 
@@ -1829,6 +1949,9 @@ reiniciarPartida PROC
     ; Reiniciar puntuacion de la ronda
     mov puntosRonda, 0
     mov victoriaRonda, 0
+    mov resultadoRegistrado, 0
+    mov rendicionRonda, 0
+    mov ganadorRonda, 0
     
     ; Reiniciar comodines de la ronda
     mov comodinesDisponibles, 2
@@ -2571,6 +2694,38 @@ registrarResultado PROC
     push ax
     push bx
 
+    ; Evitar registrar dos veces la misma ronda
+    cmp resultadoRegistrado, 0
+    je registrarRondaPendiente
+
+    jmp finRegistrarResultado
+
+registrarRondaPendiente:
+
+    mov resultadoRegistrado, 1
+
+    ; Registrar la victoria por rendicion del jugador contrario
+    cmp rendicionRonda, 1
+    jne calcularResultadoRonda
+
+    cmp modalidad, 2
+    jne calcularResultadoRonda
+
+    cmp ganadorRonda, 1
+    jne comprobarGanadorRendicion2
+
+    inc victoriasRendicion1
+    jmp calcularResultadoRonda
+
+comprobarGanadorRendicion2:
+
+    cmp ganadorRonda, 2
+    jne calcularResultadoRonda
+
+    inc victoriasRendicion2
+
+calcularResultadoRonda:
+
     ; Calcular puntos de la ronda
     call calcularPuntos
 
@@ -2591,7 +2746,14 @@ registrarJugador1:
     mov bl, rondasJugadas1
 
     mov al, errores
+
+    ; Evitar escribir fuera del historial
+    cmp bx, 27
+    jae acumularErroresJugador1
+
     mov historialErrores1[bx], al
+
+acumularErroresJugador1:
 
     ; Acumular errores
     mov ah, 0
@@ -2619,7 +2781,14 @@ registrarJugador2:
     mov bl, rondasJugadas2
 
     mov al, errores
+
+    ; Evitar escribir fuera del historial
+    cmp bx, 27
+    jae acumularErroresJugador2
+
     mov historialErrores2[bx], al
+
+acumularErroresJugador2:
 
     ; Acumular errores
     mov ah, 0
@@ -2693,5 +2862,236 @@ mostrarPuntosRonda PROC
     ret
 
 mostrarPuntosRonda ENDP
+
+;--------------------
+;10. Menu de acciones
+;--------------------
+
+mostrarMenuAcciones PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeOpcionComodin
+    mov ah, 09h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarMenuAcciones ENDP
+
+confirmarAccion PROC
+
+    push ax
+    push bx
+    push dx
+
+    ; DX contiene el mensaje de la accion
+    mov bx, dx
+
+repetirConfirmacionAccion:
+
+    mov dx, bx
+    mov ah, 09h
+    int 21h
+
+    lea dx, mensajeConfirmarAccion
+    mov ah, 09h
+    int 21h
+
+    mov ah, 01h
+    int 21h
+
+    cmp al, '1'
+    je accionConfirmada
+
+    cmp al, '2'
+    je accionCancelada
+
+    call mostrarErrorOpcion
+    jmp repetirConfirmacionAccion
+
+accionConfirmada:
+
+    pop dx
+    pop bx
+    pop ax
+
+    ; CF = 1 cuando se confirma
+    stc
+    ret
+
+accionCancelada:
+
+    pop dx
+    pop bx
+    pop ax
+
+    ; CF = 0 cuando se cancela
+    clc
+    ret
+
+confirmarAccion ENDP
+
+rendirse PROC
+
+    ; El cierre de derrota conserva errores y registra la ronda una sola vez
+    mov rendicionRonda, 1
+
+    ret
+
+rendirse ENDP
+
+mostrarRendicion PROC
+
+    push ax
+    push dx
+
+    cmp rendicionRonda, 1
+    jne finMostrarRendicion
+
+    lea dx, mensajeRendicion
+    mov ah, 09h
+    int 21h
+
+    cmp modalidad, 2
+    jne finMostrarRendicion
+
+    lea dx, mensajeGanadorRendicion
+    mov ah, 09h
+    int 21h
+
+    cmp ganadorRonda, 1
+    je ganadorRendicionJugador1
+
+    lea dx, nickname2
+    jmp imprimirGanadorRendicion
+
+ganadorRendicionJugador1:
+
+    lea dx, nickname1
+
+imprimirGanadorRendicion:
+
+    call imprimirNickname
+
+finMostrarRendicion:
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarRendicion ENDP
+
+reiniciarJuego PROC
+
+    push si
+
+    ; Reiniciar configuracion de los jugadores
+    mov modalidad, 0
+    mov dificultad, 0
+    mov categoria, 0
+    mov jugadorActual, 1
+    mov jugadorSecreto, 1
+    mov cantidadRondas, 1
+    mov rondaActual, 1
+    mov byte ptr nickname1[1], 0
+    mov byte ptr nickname2[1], 0
+
+    mov si, 0
+
+limpiarNicknames:
+
+    mov nickname1[si+2], 0
+    mov nickname2[si+2], 0
+
+    inc si
+    cmp si, 12
+    jb limpiarNicknames
+
+    ; Descartar la ronda inconclusa sin registrar resultado
+    mov letraJugador, 0
+    mov encontro, 0
+    mov errores, 0
+    mov cantidadUsadas, 0
+    mov longitudPalabra, 0
+    mov palabraActual, 0
+    mov numeroPalabra, 0
+    mov estadoTurno, 0
+    mov continuarPartida, 0
+    mov longitudSecreta, 0
+    mov entradaSecretaInvalida, 0
+
+    ; Reiniciar comodines
+    mov comodinesDisponibles, 2
+    mov comodinesUsados, 0
+    mov cantidadOcultas, 0
+    mov letraComodin, 0
+
+    mov si, 0
+
+limpiarLetrasJuego:
+
+    mov letrasUsadas[si], 0
+    mov letrasOcultas[si], 0
+
+    inc si
+    cmp si, 26
+    jb limpiarLetrasJuego
+
+    ; Limpiar la palabra anterior sin utilizar su direccion
+    mov si, 0
+
+limpiarPalabrasJuego:
+
+    mov palabraSecreta[si], 0
+    mov palabraVisible[si], '_'
+
+    inc si
+    cmp si, 20
+    jb limpiarPalabrasJuego
+
+    mov palabraSecreta[si], 0
+    mov palabraVisible[si], '$'
+
+    ; Reiniciar puntajes y estadisticas acumuladas
+    mov puntajeJugador1, 0
+    mov puntajeJugador2, 0
+    mov puntosRonda, 0
+    mov palabrasAdivinadas1, 0
+    mov palabrasAdivinadas2, 0
+    mov rondasJugadas1, 0
+    mov rondasJugadas2, 0
+    mov erroresTotales1, 0
+    mov erroresTotales2, 0
+    mov victoriaRonda, 0
+    mov resultadoRegistrado, 0
+    mov rendicionRonda, 0
+    mov ganadorRonda, 0
+    mov victoriasRendicion1, 0
+    mov victoriasRendicion2, 0
+
+    mov si, 0
+
+limpiarHistorialJuego:
+
+    mov historialErrores1[si], 0
+    mov historialErrores2[si], 0
+
+    inc si
+    cmp si, 27
+    jb limpiarHistorialJuego
+
+    ; Conservar palabrasUtilizadas y totalPalabrasUsadas
+    ; reiniciarPartida se ejecuta al seleccionar una palabra valida
+    pop si
+
+    ret
+
+reiniciarJuego ENDP
 
 end main
