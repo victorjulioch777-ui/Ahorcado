@@ -20,10 +20,7 @@ mensajeLetrasUsadas DB 0Dh, 0Ah, "Letras utilizadas: $"
 mensajeNinguna DB "Ninguna$"
 mensajeRevelar DB 0Dh, 0Ah, "La palabra era: $"
 
-mensajeTitulo DB 0Dh, 0Ah
-              DB "================================", 0Dh, 0Ah
-              DB "           AHORCADO             ", 0Dh, 0Ah
-              DB "================================", 0Dh, 0Ah, "$"
+mensajeTitulo DB "=========== AHORCADO ===========$"
               
 dibujo0 DB 0Dh, 0Ah
         DB "    +-------+", 0Dh, 0Ah
@@ -89,14 +86,10 @@ dibujo6 DB 0Dh, 0Ah
         DB "=============", 0Dh, 0Ah, "$"
         
 mensajeVictoriaFinal DB 0Dh, 0Ah
-                     DB "================================", 0Dh, 0Ah
-                     DB "          HAS GANADO!           ", 0Dh, 0Ah
-                     DB "================================", 0Dh, 0Ah, "$"
+                     DB "========== HAS GANADO! ==========$"
 
 mensajeDerrotaFinal DB 0Dh, 0Ah
-                    DB "================================", 0Dh, 0Ah
-                    DB "          HAS PERDIDO!          ", 0Dh, 0Ah
-                    DB "================================", 0Dh, 0Ah, "$"
+                    DB "========= HAS PERDIDO! ==========$"
 
 mensajeLeyenda DB 0Dh, 0Ah
                DB "Verde: Correcta | Rojo: Incorrecta", "$"
@@ -162,9 +155,7 @@ textoComputacion DB "Computacion$"
 
 mensajeOtraPartida DB 0Dh, 0Ah
                    DB "Desea jugar otra partida?", 0Dh, 0Ah
-                   DB "1. Si", 0Dh, 0Ah
-                   DB "2. No", 0Dh, 0Ah
-                   DB "Opcion: $"
+                   DB "[1] Si | [2] No. Opcion: $"
 
 mensajeSinPalabras DB 0Dh, 0Ah
                    DB "No quedan palabras disponibles", 0Dh, 0Ah
@@ -236,10 +227,7 @@ mensajeComodines DB 0Dh, 0Ah
                  DB "Comodines disponibles: $"
 
 mensajeOpcionComodin DB 0Dh, 0Ah
-                     DB "[1] Utilizar comodin", 0Dh, 0Ah
-                     DB "[2] Rendirse", 0Dh, 0Ah
-                     DB "[3] Reiniciar juego", 0Dh, 0Ah
-                     DB "[4] Salir$"
+                     DB "[1] Utilizar comodin | [2] Rendirse | [3] Reiniciar juego | [4] Salir$"
 
 mensajeComodinUsado DB 0Dh, 0Ah
                     DB "Comodin utilizado! Letra revelada: $"
@@ -265,9 +253,7 @@ mensajeConfirmarSalida DB 0Dh, 0Ah
                        DB "Desea salir del juego?$"
 
 mensajeConfirmarAccion DB 0Dh, 0Ah
-                      DB "[1] Si", 0Dh, 0Ah
-                      DB "[2] No", 0Dh, 0Ah
-                      DB "Opcion: $"
+                      DB "[1] Si | [2] No. Opcion: $"
 
 mensajeRendicion DB 0Dh, 0Ah
                  DB "El jugador se ha rendido.$"
@@ -497,6 +483,11 @@ victoriasRendicion2 DB 0
 historialErrores1 DB 27 DUP(0)
 historialErrores2 DB 27 DUP(0)
 
+; Terminador pendiente antes de otra entrada: 0 = ninguno,
+; 1 = CR/LF opcional tras tecla inmediata, 2 = solo LF tras CR.
+; No vaciar otras teclas ni esperar un terminador aun no pulsado.
+terminadorPendiente DB 0
+
 .code
 
 main proc
@@ -665,8 +656,7 @@ main proc
         mov ah, 09h
         int 21h
     
-        mov ah, 01h
-        int 21h
+        call leerOpcionTeclado
     
         ; Comprobar si solicita comodin
         cmp al, '1'
@@ -1093,8 +1083,7 @@ repetirModalidad:
     mov ah, 09h
     int 21h
 
-    mov ah, 01h
-    int 21h
+    call leerOpcionTeclado
 
     cmp al, '1'
     je guardarModalidad
@@ -1144,17 +1133,138 @@ mostrarErrorOpcion PROC
 
 mostrarErrorOpcion ENDP
 
+; Leer una tecla completa sin eco. Las teclas extendidas producen
+; 00h y un segundo byte: ambos se descartan para no interpretar
+; el codigo extendido como una letra u opcion en otra pantalla.
+; Devuelve el caracter normal en AL; modifica AH y las banderas.
+leerCaracterTeclado PROC
+
+repetirCaracterTeclado:
+
+    mov ah, 08h
+    int 21h
+
+    cmp al, 0
+    jne finLeerCaracterTeclado
+
+    mov ah, 08h
+    int 21h
+    jmp repetirCaracterTeclado
+
+finLeerCaracterTeclado:
+
+    ret
+
+leerCaracterTeclado ENDP
+
+; Las opciones y letras son inmediatas: Enter es opcional y no
+; representa una opcion. Conservar AL durante el eco de DOS.
+leerOpcionTeclado PROC
+
+repetirOpcionTeclado:
+
+    call leerCaracterTeclado
+
+    cmp al, 0Dh
+    je repetirOpcionTeclado
+
+    cmp al, 0Ah
+    je repetirOpcionTeclado
+
+    mov terminadorPendiente, 1
+
+    push dx
+    push ax
+
+    mov dl, al
+    mov ah, 02h
+    int 21h
+
+    pop ax
+    pop dx
+
+    ret
+
+leerOpcionTeclado ENDP
+
+; Revisar solo el terminador esperado que ya esta en cola.
+; BIOS AH=01h consulta sin consumir; AH=00h retira como maximo
+; un CR y su LF opcional (estado 1), o solo un LF (estado 2).
+; No retirar un segundo CR: puede confirmar otra pausa o ser
+; una linea vacia. Nunca esperar un terminador que no esta en cola.
+descartarEnterPendiente PROC
+
+    push ax
+
+    cmp terminadorPendiente, 0
+    je finDescartarEnterPendiente
+
+    cmp terminadorPendiente, 2
+    mov terminadorPendiente, 0
+    je consultarLFPendiente
+
+    mov ah, 01h
+    int 16h
+    jz finDescartarEnterPendiente
+
+    cmp al, 0Dh
+    jne comprobarLFPendiente
+
+    mov ah, 00h
+    int 16h
+
+consultarLFPendiente:
+
+    mov ah, 01h
+    int 16h
+    jz finDescartarEnterPendiente
+
+comprobarLFPendiente:
+
+    cmp al, 0Ah
+    jne finDescartarEnterPendiente
+
+    mov ah, 00h
+    int 16h
+
+finDescartarEnterPendiente:
+
+    pop ax
+    ret
+
+descartarEnterPendiente ENDP
+
 esperarTecla PROC
 
     push ax
     push dx
 
+    call descartarEnterPendiente
+
     lea dx, mensajeContinuar
     mov ah, 09h
     int 21h
 
-    mov ah, 08h
-    int 21h
+    call leerCaracterTeclado
+
+    ; CR confirma la pausa y solo puede dejar un LF pendiente.
+    ; Otra tecla puede llevar un Enter opcional ya en cola.
+    mov terminadorPendiente, 0
+
+    cmp al, 0Dh
+    jne comprobarLFEsperarTecla
+
+    mov terminadorPendiente, 2
+    jmp finEsperarTecla
+
+comprobarLFEsperarTecla:
+
+    cmp al, 0Ah
+    je finEsperarTecla
+
+    mov terminadorPendiente, 1
+
+finEsperarTecla:
 
     pop dx
     pop ax
@@ -1172,13 +1282,19 @@ leerNickname PROC
 
     mov bx, dx
 
+    ; Mantener la edicion de linea de DOS y preservar un nuevo
+    ; Enter vacio; retirar solo el terminador anterior esperado.
 repetirNickname:
 
+    call descartarEnterPendiente
     mov byte ptr [bx+1], 0
 
     mov dx, bx
     mov ah, 0Ah
     int 21h
+
+    ; DOS consumio el CR de la linea; retirar solo su LF opcional.
+    mov terminadorPendiente, 2
 
     mov al, [bx+1]
 
@@ -1192,6 +1308,9 @@ repetirNickname:
 
 nicknameInvalido:
 
+    call limpiarPantalla
+    call mostrarTitulo
+
     lea dx, mensajeErrorNickname
     mov ah, 09h
     int 21h
@@ -1201,6 +1320,17 @@ nicknameInvalido:
     int 21h
 
     mov dl, 0Ah
+    int 21h
+
+    lea dx, mensajeNickname1
+    cmp bx, OFFSET nickname1
+    je volverSolicitarNickname
+
+    lea dx, mensajeNickname2
+
+volverSolicitarNickname:
+
+    mov ah, 09h
     int 21h
 
     jmp repetirNickname
@@ -1267,8 +1397,7 @@ repetirDificultad:
     mov ah, 09h
     int 21h
 
-    mov ah, 01h
-    int 21h
+    call leerOpcionTeclado
 
     cmp al, '1'
     jb dificultadInvalida
@@ -1299,8 +1428,7 @@ repetirCategoria:
     mov ah, 09h
     int 21h
 
-    mov ah, 01h
-    int 21h
+    call leerOpcionTeclado
 
     cmp al, '1'
     jb categoriaInvalida
@@ -1337,8 +1465,7 @@ repetirRondas:
     mov ah, 09h
     int 21h
 
-    mov ah, 01h
-    int 21h
+    call leerOpcionTeclado
 
     cmp al, '2'
     je guardarRondas
@@ -1397,8 +1524,7 @@ repetirOtraPartida:
     mov ah, 09h
     int 21h
 
-    mov ah, 01h
-    int 21h
+    call leerOpcionTeclado
 
     cmp al, '1'
     je continuarJuego
@@ -1406,6 +1532,9 @@ repetirOtraPartida:
     cmp al, '2'
     je terminarJuego
 
+    ; Evitar acumular mensajes sobre el resultado de la ronda
+    call limpiarPantalla
+    call mostrarTitulo
     call mostrarErrorOpcion
     jmp repetirOtraPartida
 
@@ -2185,6 +2314,7 @@ ingresarPalabraSecreta PROC
 
 repetirPalabraSecreta:
 
+    call descartarEnterPendiente
     call limpiarPantalla
     call mostrarTitulo
     call mostrarRonda
@@ -2207,22 +2337,12 @@ repetirPalabraSecreta:
 
 leerCaracterSecreto:
 
-    ; Leer caracter sin mostrarlo
-    mov ah, 08h
-    int 21h
+    ; Leer una tecla completa sin mostrarla; ignorar extendidas.
+    call leerCaracterTeclado
 
-    ; Enter termina el ingreso
+    ; Enter termina el ingreso una vez iniciada la captura.
     cmp al, 0Dh
     je validarPalabraSecreta
-
-    ; Ignorar teclas extendidas
-    cmp al, 0
-    jne comprobarRetroceso
-
-    mov ah, 08h
-    int 21h
-
-    jmp leerCaracterSecreto
 
 comprobarRetroceso:
 
@@ -2276,6 +2396,9 @@ marcarEntradaInvalida:
     jmp leerCaracterSecreto
 
 validarPalabraSecreta:
+
+    ; El CR ya termino la captura; conservar otro CR para la pausa.
+    mov terminadorPendiente, 2
 
     ; Comprobar caracteres invalidos
     cmp entradaSecretaInvalida, 1
@@ -2409,7 +2532,7 @@ intercambiarJugadores PROC
 intercambiarJugadores ENDP
 
 ;---------------------------
-;8. Comodines y temporizador 
+;8. Comodines de pista
 ;--------------------------- 
 
 mostrarComodines PROC
@@ -3384,6 +3507,10 @@ confirmarAccion PROC
 
 repetirConfirmacionAccion:
 
+    ; La confirmacion tiene su propia pantalla, tambien al reintentar
+    call limpiarPantalla
+    call mostrarTitulo
+
     mov dx, bx
     mov ah, 09h
     int 21h
@@ -3392,8 +3519,7 @@ repetirConfirmacionAccion:
     mov ah, 09h
     int 21h
 
-    mov ah, 01h
-    int 21h
+    call leerOpcionTeclado
 
     cmp al, '1'
     je accionConfirmada
