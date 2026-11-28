@@ -9,7 +9,7 @@
 
 mensajeAcierto DB 0Dh, 0Ah, "Letra correcta!$"
 mensajeError DB 0Dh, 0Ah, "Letra incorrecta!$"
-mensajeIngresar DB 0Dh, 0Ah, "Ingrese una letra: $"
+mensajeIngresar DB 0Dh, 0Ah, "Ingrese una letra u opcion: $"
 mensajeDerrota DB 0Dh, 0Ah, "Has perdido!$"
 mensajeVictoria DB 0Dh, 0Ah, "Has ganado!$"
 mensajeRepetida DB 0Dh, 0Ah, "Ya ingresaste esa letra!$"
@@ -227,6 +227,26 @@ mensajePuntosRonda DB 0Dh, 0Ah
 
 mensajePalabrasAdivinadas DB 0Dh, 0Ah
                          DB "Palabras adivinadas: $"
+                         
+;================================
+; MENSAJES DE COMODINES
+;================================
+
+mensajeComodines DB 0Dh, 0Ah
+                 DB "Comodines disponibles: $"
+
+mensajeOpcionComodin DB 0Dh, 0Ah
+                     DB "[1] Utilizar comodin$"
+
+mensajeComodinUsado DB 0Dh, 0Ah
+                    DB "Comodin utilizado! Letra revelada: $"
+
+mensajeSinComodines DB 0Dh, 0Ah
+                    DB "No quedan comodines disponibles.$"
+
+mensajeComodinBloqueado DB 0Dh, 0Ah
+                        DB "Solo falta una letra distinta.", 0Dh, 0Ah
+                        DB "No puede utilizar el comodin.$"
 
 ;-----------------------------                     
 ;2. Variables de los jugadores
@@ -363,7 +383,21 @@ continuarPartida DB 0
 
 ; Control del ingreso de palabra secreta
 longitudSecreta DB 0
-entradaSecretaInvalida DB 0 
+entradaSecretaInvalida DB 0
+
+;================================
+; VARIABLES DE COMODINES
+;================================
+
+comodinesDisponibles DB 2
+comodinesUsados DB 0
+
+; Letras distintas aun ocultas
+letrasOcultas DB 26 DUP(0)
+cantidadOcultas DB 0
+
+; Letra seleccionada por el comodin
+letraComodin DB 0 
 
 ;----------------------------
 ;5. Puntuacion y estadisticas
@@ -452,7 +486,7 @@ main proc
         jmp nuevoIntento
     
     nuevoIntento:
-    
+
         call limpiarPantalla
         call mostrarTitulo
     
@@ -465,6 +499,7 @@ main proc
         call mostrarDibujo
         call mostrarPalabra
         call mostrarIntentos
+        call mostrarComodines
         call mostrarHistorial
     
         mov si, 0
@@ -473,7 +508,7 @@ main proc
         jmp mostrarEstadoTurno  
     
     mostrarEstadoTurno:
-    
+
         cmp estadoTurno, 1
         je estadoAcierto
     
@@ -486,43 +521,93 @@ main proc
         cmp estadoTurno, 4
         je estadoInvalido
     
+        cmp estadoTurno, 5
+        je estadoComodin
+    
+        cmp estadoTurno, 6
+        je estadoSinComodines
+    
+        cmp estadoTurno, 7
+        je estadoComodinBloqueado
+    
         jmp solicitarLetra
-        
+    
     estadoAcierto:
+    
         lea dx, mensajeAcierto
-        jmp imprimirEstado 
-       
+        jmp imprimirEstado
+    
     estadoError:
+    
         lea dx, mensajeError
         jmp imprimirEstado
-        
+    
     estadoRepetida:
+    
         lea dx, mensajeRepetida
         jmp imprimirEstado
-        
+    
     estadoInvalido:
+    
         lea dx, mensajeInvalido
         jmp imprimirEstado
-        
-    imprimirEstado:
+    
+    estadoComodin:
+    
+        lea dx, mensajeComodinUsado
         mov ah, 09h
         int 21h
-        
+    
+        mov dl, letraComodin
+        mov ah, 02h
+        int 21h
+    
+        jmp solicitarLetra
+    
+    estadoSinComodines:
+    
+        lea dx, mensajeSinComodines
+        jmp imprimirEstado
+    
+    estadoComodinBloqueado:
+    
+        lea dx, mensajeComodinBloqueado
+    
+    imprimirEstado:
+    
+        mov ah, 09h
+        int 21h
+    
         jmp solicitarLetra
     
     solicitarLetra:
     
-        ; Solicitar una letra al jugador
+        ; Mostrar opcion de comodin
+        lea dx, mensajeOpcionComodin
+        mov ah, 09h
+        int 21h
+    
+        ; Solicitar entrada
         lea dx, mensajeIngresar
         mov ah, 09h
         int 21h
     
-        ; Leer la letra del jugador
         mov ah, 01h
         int 21h
     
+        ; Comprobar si solicita comodin
+        cmp al, '1'
+        jne procesarLetraNormal
+    
+        call utilizarComodin
+        
+        jmp nuevoIntento
+        
+    procesarLetraNormal:
+
         ; Convertir minusculas a mayusculas
         cmp al, 'a'
+        
         jb guardarCaracter
     
         cmp al, 'z'
@@ -621,11 +706,11 @@ main proc
         
         ;Primero mover el cursor al inicio
         mov ah, 02h
-        mov dl, 0dh   ;dh es el retorno del carro
+        mov dl, 0dh   ;0Dh es el retorno del carro
         int 21h
         
         ;Despues avanzar a la siguiente linea
-        mov dl, 0ah   ;ah es el salto de linea
+        mov dl, 0ah   ;0Ah es el salto de linea
         int 21h
         
         ;Mostrar las letras descubiertas
@@ -637,12 +722,12 @@ main proc
         cmp encontro, 1
         je mostrarAcierto
         
-        ; Registrar un intento correcto
+        ; Registrar un intento incorrecto
         inc errores
         
         mov estadoTurno, 2
         
-        ; Si no hubo concidiencias
+        ; Si no hubo coincidencias
         lea dx, mensajeError
         mov ah, 09h
         int 21h
@@ -660,7 +745,7 @@ main proc
         mov si, 0
         
     verificarVictoria:
-        ;Se encarga de mostrar el mensaje de acierto
+        ;Comprobar si quedan letras ocultas
         cmp palabraVisible[si], '_'
         je faltanLetras
             
@@ -675,7 +760,7 @@ main proc
         cmp si, ax 
         jb verificarVictoria
             
-        ;Sino encontro ningun guion bajo en las cuatro posiciones, gana
+        ;Si no encontro ningun guion bajo en la palabra, gana
         jmp mostrarVictoria
         
     faltanLetras:
@@ -702,6 +787,7 @@ main proc
         call mostrarDibujo
         call mostrarPalabra
         call mostrarIntentos
+        call mostrarComodines
         call mostrarHistorial
     
         lea dx, mensajeVictoriaFinal
@@ -740,6 +826,7 @@ main proc
         call mostrarDibujo
         call mostrarPalabra
         call mostrarIntentos
+        call mostrarComodines
         call mostrarHistorial
     
         lea dx, mensajeDerrotaFinal
@@ -1742,6 +1829,12 @@ reiniciarPartida PROC
     ; Reiniciar puntuacion de la ronda
     mov puntosRonda, 0
     mov victoriaRonda, 0
+    
+    ; Reiniciar comodines de la ronda
+    mov comodinesDisponibles, 2
+    mov comodinesUsados, 0
+    mov cantidadOcultas, 0
+    mov letraComodin, 0
 
     ; Limpiar historial de letras
     mov si, 0
@@ -2148,7 +2241,208 @@ intercambiarJugadores ENDP
 
 ;---------------------------
 ;8. Comodines y temporizador 
-;---------------------------
+;--------------------------- 
+
+mostrarComodines PROC
+
+    push ax
+    push dx
+
+    lea dx, mensajeComodines
+    mov ah, 09h
+    int 21h
+
+    ; Convertir cantidad a ASCII
+    mov dl, comodinesDisponibles
+    add dl, 30h
+
+    mov ah, 02h
+    int 21h
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarComodines ENDP
+
+obtenerLetrasOcultas PROC
+
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    ; Reiniciar cantidad de letras distintas
+    mov cantidadOcultas, 0
+
+    ; Obtener direccion de la palabra actual
+    mov bx, palabraActual
+
+    mov si, 0
+
+recorrerLetrasOcultas:
+
+    ; Comprobar fin de palabra
+    mov al, longitudPalabra
+    mov ah, 0
+
+    cmp si, ax
+    jae finObtenerOcultas
+
+    ; Verificar si la posicion sigue oculta
+    cmp palabraVisible[si], '_'
+    jne siguienteLetraOculta
+
+    ; Obtener letra original
+    mov dl, [bx+si]
+
+    ; Buscar si ya esta registrada
+    mov di, 0
+
+    mov cl, cantidadOcultas
+    mov ch, 0
+
+buscarOcultaRepetida:
+
+    cmp di, cx
+    jae guardarLetraOculta
+
+    cmp letrasOcultas[di], dl
+    je siguienteLetraOculta
+
+    inc di
+
+    jmp buscarOcultaRepetida
+
+guardarLetraOculta:
+
+    mov letrasOcultas[di], dl
+
+    inc cantidadOcultas
+
+siguienteLetraOculta:
+
+    inc si
+
+    jmp recorrerLetrasOcultas
+
+finObtenerOcultas:
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+obtenerLetrasOcultas ENDP
+
+utilizarComodin PROC
+
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+
+    ; Verificar disponibilidad
+    cmp comodinesDisponibles, 0
+    jne comprobarLetrasComodin
+
+    mov estadoTurno, 6
+    jmp finUtilizarComodin
+
+comprobarLetrasComodin:
+
+    ; Obtener letras distintas pendientes
+    call obtenerLetrasOcultas
+
+    ; Deben faltar al menos dos letras distintas
+    cmp cantidadOcultas, 2
+    jae seleccionarLetraComodin
+
+    mov estadoTurno, 7
+    jmp finUtilizarComodin
+
+seleccionarLetraComodin:
+
+    ; Obtener hora del sistema
+    mov ah, 2Ch
+    int 21h
+
+    ; Combinar segundos y centesimas
+    mov al, dl
+    add al, dh
+
+    ; Obtener indice pseudoaleatorio
+    mov ah, 0
+    mov bl, cantidadOcultas
+
+    div bl
+
+    ; El residuo queda en AH
+    mov bl, ah
+    mov bh, 0
+
+    ; Obtener letra seleccionada
+    mov al, letrasOcultas[bx]
+
+    mov letraComodin, al
+
+    ; Revelar todas sus apariciones
+    mov bx, palabraActual
+    mov si, 0
+
+    mov cl, longitudPalabra
+    mov ch, 0
+
+revelarLetraComodin:
+
+    mov al, [bx+si]
+
+    cmp al, letraComodin
+    jne siguientePosicionComodin
+
+    mov palabraVisible[si], al
+
+siguientePosicionComodin:
+
+    inc si
+
+    loop revelarLetraComodin
+
+    ; Registrar letra en el historial
+    mov bx, 0
+    mov bl, cantidadUsadas
+
+    mov al, letraComodin
+    mov letrasUsadas[bx], al
+
+    inc cantidadUsadas
+
+    ; Actualizar cantidad de comodines
+    dec comodinesDisponibles
+    inc comodinesUsados
+
+    ; Indicar uso exitoso
+    mov estadoTurno, 5
+
+finUtilizarComodin:
+
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+
+    ret
+
+utilizarComodin ENDP
 
 ;---------------
 ;9. Estadisticas
@@ -2220,20 +2514,39 @@ calcularPuntos PROC
 
     push ax
     push bx
+    push cx
 
     ; Si perdio, obtiene cero puntos
     cmp victoriaRonda, 1
     jne calcularDerrota
 
-    ; Multiplicar errores por 15
+    ; Calcular penalizacion por errores
     mov al, errores
     mov bl, 15
 
     mul bl
 
-    ; Aplicar formula: 100 - errores * 15
+    ; Guardar penalizacion por errores
+    mov cx, ax
+
+    ; Calcular penalizacion por comodines
+    mov al, comodinesUsados
+    mov bl, 10
+
+    mul bl
+
+    ; Sumar ambas penalizaciones
+    add cx, ax
+
+    ; Puntaje base
     mov bx, 100
-    sub bx, ax
+
+    ; Evitar resultados negativos
+    cmp cx, bx
+    jae calcularDerrota
+
+    ; Aplicar penalizaciones
+    sub bx, cx
 
     mov puntosRonda, bx
 
@@ -2245,6 +2558,7 @@ calcularDerrota:
 
 finCalcularPuntos:
 
+    pop cx
     pop bx
     pop ax
 
