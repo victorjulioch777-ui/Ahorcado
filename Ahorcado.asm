@@ -275,6 +275,36 @@ mensajeRendicion DB 0Dh, 0Ah
 mensajeGanadorRendicion DB 0Dh, 0Ah
                        DB "Ganador por rendicion: $"
 
+;================================
+; MENSAJES DE ESTADISTICAS FINALES
+;================================
+
+mensajeEstadisticasFinales DB "================================", 0Dh, 0Ah
+                          DB "     ESTADISTICAS FINALES       ", 0Dh, 0Ah
+                          DB "================================$"
+
+mensajeModalidadFinal DB 0Dh, 0Ah, "Modalidad: $"
+textoMaquinaJugador DB "Maquina vs Jugador$"
+textoJugadorJugador DB "Jugador vs Jugador$"
+mensajePuntajeFinal DB 0Dh, 0Ah, "Puntaje final acumulado: $"
+mensajeRondasJugadas DB 0Dh, 0Ah, "Rondas jugadas: $"
+mensajeErroresTotales DB 0Dh, 0Ah, "Total de errores acumulados: $"
+mensajeVictoriasRendicion DB 0Dh, 0Ah, "Victorias por rendicion del rival: $"
+mensajeResultadoPuntaje DB 0Dh, 0Ah, "Resultado por puntaje acumulado: $"
+mensajeUltimaRonda DB 0Dh, 0Ah, "Resultado de la ultima ronda completada: $"
+textoGanador DB "GANADOR$"
+textoPerdedor DB "PERDEDOR$"
+textoEmpate DB "EMPATE$"
+textoSinRondas DB "SIN RONDAS COMPLETADAS$"
+textoPorRendicion DB " (RENDICION)$"
+mensajeRondaInconclusa DB 0Dh, 0Ah, "Ronda inconclusa de: $"
+mensajeNoContabilizada DB 0Dh, 0Ah, "No incluida en los resultados acumulados.$"
+mensajeHistorialFinal DB 0Dh, 0Ah, 0Dh, 0Ah
+                     DB "INTENTOS FALLIDOS POR RONDA", 0Dh, 0Ah
+                     DB "Numeracion de rondas completadas por este jugador.$"
+mensajeRondaHistorial DB 0Dh, 0Ah, "Ronda completada $"
+textoSeparadorErrores DB ": $"
+
 ;-----------------------------                     
 ;2. Variables de los jugadores
 ;-----------------------------
@@ -454,6 +484,10 @@ victoriaRonda DB 0
 resultadoRegistrado DB 0
 rendicionRonda DB 0
 ganadorRonda DB 0
+
+; Ultimo resultado contra la maquina, conservado entre rondas
+; 0 = sin rondas, 1 = victoria, 2 = derrota, 3 = rendicion
+ultimoResultadoMaquina DB 0
 
 ; Victorias por rendicion, sin palabras adivinadas ni puntos
 victoriasRendicion1 DB 0
@@ -1027,8 +1061,20 @@ main proc
     
     salirJuego:
 
-        ; Punto de integracion para las estadisticas finales del modulo 9
-        .exit
+        ; Mostrar estadisticas una sola vez si hay jugadores registrados
+        cmp modalidad, 0
+        je finalizarPrograma
+
+        cmp byte ptr nickname1[1], 0
+        je finalizarPrograma
+
+        call mostrarEstadisticasFinales
+        call esperarTecla
+
+    finalizarPrograma:
+
+        mov ax, 4C00h
+        int 21h
 
 main endp
 
@@ -2704,6 +2750,27 @@ registrarRondaPendiente:
 
     mov resultadoRegistrado, 1
 
+    ; Conservar el ultimo resultado completado contra la maquina
+    cmp modalidad, 1
+    jne registrarRendicionContrario
+
+    mov ultimoResultadoMaquina, 2
+
+    cmp rendicionRonda, 1
+    je guardarRendicionMaquina
+
+    cmp victoriaRonda, 1
+    jne registrarRendicionContrario
+
+    mov ultimoResultadoMaquina, 1
+    jmp registrarRendicionContrario
+
+guardarRendicionMaquina:
+
+    mov ultimoResultadoMaquina, 3
+
+registrarRendicionContrario:
+
     ; Registrar la victoria por rendicion del jugador contrario
     cmp rendicionRonda, 1
     jne calcularResultadoRonda
@@ -2862,6 +2929,429 @@ mostrarPuntosRonda PROC
     ret
 
 mostrarPuntosRonda ENDP
+
+mostrarEstadisticasFinales PROC
+
+    push ax
+    push bx
+
+    ; BX selecciona al jugador sin modificar sus datos ni los roles
+    mov bx, 1
+
+    cmp modalidad, 2
+    jne mostrarPrimerJugadorFinal
+
+    ; Comparar puntajes de 16 bits sin signo
+    mov ax, puntajeJugador1
+    cmp ax, puntajeJugador2
+    jae mostrarPrimerJugadorFinal
+
+    mov bx, 2
+
+mostrarPrimerJugadorFinal:
+
+    call mostrarEstadisticasJugador
+
+    cmp modalidad, 2
+    jne finMostrarEstadisticasFinales
+
+    call esperarTecla
+
+    ; Mostrar al otro jugador conservando el orden de los datos originales
+    mov ax, 3
+    sub ax, bx
+    mov bx, ax
+
+    call mostrarEstadisticasJugador
+
+finMostrarEstadisticasFinales:
+
+    pop bx
+    pop ax
+
+    ret
+
+mostrarEstadisticasFinales ENDP
+
+mostrarEncabezadoEstadisticas PROC
+
+    push ax
+    push dx
+
+    call limpiarPantalla
+
+    lea dx, mensajeEstadisticasFinales
+    mov ah, 09h
+    int 21h
+
+    lea dx, mensajeModalidadFinal
+    mov ah, 09h
+    int 21h
+
+    lea dx, textoMaquinaJugador
+
+    cmp modalidad, 2
+    jne imprimirModalidadFinal
+
+    lea dx, textoJugadorJugador
+
+imprimirModalidadFinal:
+
+    mov ah, 09h
+    int 21h
+
+    lea dx, mensajeJugadorActual
+    mov ah, 09h
+    int 21h
+
+    lea dx, nickname1
+
+    cmp bx, 1
+    je imprimirNicknameFinal
+
+    lea dx, nickname2
+
+imprimirNicknameFinal:
+
+    call imprimirNickname
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarEncabezadoEstadisticas ENDP
+
+imprimirDatoEstadistico PROC
+
+    ; DX contiene el mensaje y AX el valor sin signo de 16 bits
+    push ax
+
+    mov ah, 09h
+    int 21h
+
+    pop ax
+
+    call imprimirNumero
+
+    ret
+
+imprimirDatoEstadistico ENDP
+
+mostrarEstadisticasJugador PROC
+
+    push ax
+    push cx
+    push dx
+
+    call mostrarEncabezadoEstadisticas
+
+    mov ax, puntajeJugador1
+
+    cmp bx, 1
+    je imprimirPuntajeFinal
+
+    mov ax, puntajeJugador2
+
+imprimirPuntajeFinal:
+
+    lea dx, mensajePuntajeFinal
+    call imprimirDatoEstadistico
+
+    mov ah, 0
+    mov al, palabrasAdivinadas1
+
+    cmp bx, 1
+    je imprimirPalabrasFinales
+
+    mov al, palabrasAdivinadas2
+
+imprimirPalabrasFinales:
+
+    lea dx, mensajePalabrasAdivinadas
+    call imprimirDatoEstadistico
+
+    mov ah, 0
+    mov al, rondasJugadas1
+
+    cmp bx, 1
+    je imprimirRondasFinales
+
+    mov al, rondasJugadas2
+
+imprimirRondasFinales:
+
+    ; Conservar la cantidad para decidir si hay una pagina de historial
+    mov cx, ax
+    lea dx, mensajeRondasJugadas
+    call imprimirDatoEstadistico
+
+    mov ax, erroresTotales1
+
+    cmp bx, 1
+    je imprimirErroresFinales
+
+    mov ax, erroresTotales2
+
+imprimirErroresFinales:
+
+    lea dx, mensajeErroresTotales
+    call imprimirDatoEstadistico
+
+    cmp modalidad, 2
+    jne mostrarResultadoJugadorFinal
+
+    mov ah, 0
+    mov al, victoriasRendicion1
+
+    cmp bx, 1
+    je imprimirRendicionesFinales
+
+    mov al, victoriasRendicion2
+
+imprimirRendicionesFinales:
+
+    lea dx, mensajeVictoriasRendicion
+    call imprimirDatoEstadistico
+
+mostrarResultadoJugadorFinal:
+
+    call mostrarResultadoFinal
+    call mostrarRondaInconclusa
+
+    cmp cx, 0
+    je finMostrarEstadisticasJugador
+
+    call esperarTecla
+    call mostrarHistorialEstadisticas
+
+finMostrarEstadisticasJugador:
+
+    pop dx
+    pop cx
+    pop ax
+
+    ret
+
+mostrarEstadisticasJugador ENDP
+
+mostrarResultadoFinal PROC
+
+    push ax
+    push dx
+
+    cmp modalidad, 2
+    je resultadoFinalMultijugador
+
+    lea dx, mensajeUltimaRonda
+    mov ah, 09h
+    int 21h
+
+    lea dx, textoSinRondas
+
+    cmp rondasJugadas1, 0
+    je imprimirResultadoFinal
+
+    lea dx, textoGanador
+
+    cmp ultimoResultadoMaquina, 1
+    je imprimirResultadoFinal
+
+    lea dx, textoPerdedor
+    mov ah, 09h
+    int 21h
+
+    cmp ultimoResultadoMaquina, 3
+    jne finMostrarResultadoFinal
+
+    lea dx, textoPorRendicion
+    jmp imprimirResultadoFinal
+
+resultadoFinalMultijugador:
+
+    lea dx, mensajeResultadoPuntaje
+    mov ah, 09h
+    int 21h
+
+    mov ax, puntajeJugador1
+    cmp ax, puntajeJugador2
+    je resultadoFinalEmpate
+    ja mayorPuntajeJugador1
+
+    cmp bx, 2
+    je resultadoFinalGanador
+
+    jmp resultadoFinalPerdedor
+
+mayorPuntajeJugador1:
+
+    cmp bx, 1
+    je resultadoFinalGanador
+
+resultadoFinalPerdedor:
+
+    lea dx, textoPerdedor
+    jmp imprimirResultadoFinal
+
+resultadoFinalGanador:
+
+    lea dx, textoGanador
+    jmp imprimirResultadoFinal
+
+resultadoFinalEmpate:
+
+    lea dx, textoEmpate
+
+imprimirResultadoFinal:
+
+    mov ah, 09h
+    int 21h
+
+finMostrarResultadoFinal:
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarResultadoFinal ENDP
+
+mostrarRondaInconclusa PROC
+
+    push ax
+    push dx
+
+    ; Una palabra activa sin resultado no debe sumarse a las estadisticas
+    cmp palabraActual, 0
+    je finMostrarRondaInconclusa
+
+    cmp resultadoRegistrado, 0
+    jne finMostrarRondaInconclusa
+
+    mov al, jugadorActual
+    mov ah, 0
+    cmp bx, ax
+    jne finMostrarRondaInconclusa
+
+    lea dx, mensajeRondaInconclusa
+    mov ah, 09h
+    int 21h
+
+    lea dx, nickname1
+
+    cmp bx, 1
+    je imprimirJugadorInconcluso
+
+    lea dx, nickname2
+
+imprimirJugadorInconcluso:
+
+    call imprimirNickname
+
+    lea dx, mensajeNoContabilizada
+    mov ah, 09h
+    int 21h
+
+finMostrarRondaInconclusa:
+
+    pop dx
+    pop ax
+
+    ret
+
+mostrarRondaInconclusa ENDP
+
+mostrarHistorialEstadisticas PROC
+
+    push ax
+    push cx
+    push dx
+    push si
+    push di
+    push bp
+
+    ; Seleccionar el historial del jugador indicado por BX
+    lea si, historialErrores1
+    mov cl, rondasJugadas1
+    mov ch, 0
+
+    cmp bx, 1
+    je limitarHistorialFinal
+
+    lea si, historialErrores2
+    mov cl, rondasJugadas2
+
+limitarHistorialFinal:
+
+    ; Cada arreglo tiene espacio para 27 rondas como maximo
+    cmp cx, 27
+    jbe comprobarHistorialFinal
+
+    mov cx, 27
+
+comprobarHistorialFinal:
+
+    cmp cx, 0
+    jne iniciarHistorialFinal
+
+    jmp finMostrarHistorialEstadisticas
+
+iniciarHistorialFinal:
+
+    mov di, 0
+
+paginaHistorialFinal:
+
+    call mostrarEncabezadoEstadisticas
+
+    lea dx, mensajeHistorialFinal
+    mov ah, 09h
+    int 21h
+
+    ; Diez registros por pagina para mantener visible toda la informacion
+    mov bp, 10
+
+imprimirRondaHistorial:
+
+    lea dx, mensajeRondaHistorial
+    mov ah, 09h
+    int 21h
+
+    mov ax, di
+    inc ax
+    call imprimirNumero
+
+    lea dx, textoSeparadorErrores
+    mov ah, 09h
+    int 21h
+
+    mov al, [si]
+    mov ah, 0
+    call imprimirNumero
+
+    inc si
+    inc di
+    dec cx
+    je finMostrarHistorialEstadisticas
+
+    dec bp
+    jne imprimirRondaHistorial
+
+    call esperarTecla
+    jmp paginaHistorialFinal
+
+finMostrarHistorialEstadisticas:
+
+    pop bp
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop ax
+
+    ret
+
+mostrarHistorialEstadisticas ENDP
 
 ;--------------------
 ;10. Menu de acciones
@@ -3068,6 +3558,7 @@ limpiarPalabrasJuego:
     mov rondasJugadas2, 0
     mov erroresTotales1, 0
     mov erroresTotales2, 0
+    mov ultimoResultadoMaquina, 0
     mov victoriaRonda, 0
     mov resultadoRegistrado, 0
     mov rendicionRonda, 0
